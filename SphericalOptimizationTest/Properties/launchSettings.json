@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "SphericalOptimizationTest": {
+      "commandName": "Project",
+      "hotReloadEnabled": false,
+      "remoteDebugEnabled": true
+    }
+  }
+}
