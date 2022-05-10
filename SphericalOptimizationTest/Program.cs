@@ -28,6 +28,7 @@ namespace SphericalOptimization
             var Data = new List<SaveData>();
             var AllFiles = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
                 SearchOption.AllDirectories).ToList();
+            
             int counter= AllFiles.Count;
             //for(int i = 0; i < counter-2; i++)
              //   AllFiles.RemoveAt(0);
@@ -77,7 +78,7 @@ namespace SphericalOptimization
                  */
                 Data.Add(new SaveData
                 {
-                    File = filename,
+                    File = Path.GetFileName(filename),
                     Cost = fStar,
                     NumEvals = (int)optMethod.numEvals,
                     Best_Dir_X = xStar[0],
