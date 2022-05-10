@@ -26,16 +26,16 @@ namespace SphericalOptimization
             var dir_y = new List<double>();
             var dir_z = new List<double>();
             var Data = new List<SaveData>();
-            var AllFiles = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
+            var filename = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
                 SearchOption.AllDirectories).ToList();
             
-            int counter= AllFiles.Count;
+            int counter= filename.Count;
             //for(int i = 0; i < counter-2; i++)
-             //   AllFiles.RemoveAt(0);
-            foreach (var filename in AllFiles) 
+            //   AllFiles.RemoveAt(0);
+            for (int i = 0; i < counter; i++)  
             {
-                TVGL.IO.Open(filename, out TessellatedSolid ts);
-                Console.WriteLine("Current File " + (AllFiles.IndexOf(filename)+1) + " / " + counter);
+                TVGL.IO.Open(filename[i], out TessellatedSolid ts);
+                Console.WriteLine("Current File " + (filename.IndexOf(filename[i])+1) + " / " + counter);
                 Console.WriteLine("optimizing...");
                 double R = 0.0;
                 foreach (var v in ts.Vertices)
@@ -54,7 +54,7 @@ namespace SphericalOptimization
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationY(1.5));
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationZ(1.25));
                 optMethod.Add(new SphericalOptimizationTest.FloorAndWallFaceScore2(ts,thickness)); // obj fun
-                optMethod.Add(new MaxSpanInPopulationConvergence(1e-1));
+                optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
                 /* Let us start the search from a specific point. */
                 double[] xInit = new[] { 0.0, 0.0 };//,100};
                 var fStar = optMethod.Run(out var xStar, xInit);
@@ -78,7 +78,7 @@ namespace SphericalOptimization
                  */
                 Data.Add(new SaveData
                 {
-                    File = Path.GetFileName(filename),
+                    File = Path.GetFileName(filename[i]),
                     Cost = fStar,
                     NumEvals = (int)optMethod.numEvals,
                     Best_Dir_X = xStar[0],
@@ -88,7 +88,7 @@ namespace SphericalOptimization
                 //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness, xStar);
 
             }
-            using (var writer = new StreamWriter(@"C:\\Users\\galon\\source\\repos\\OOOT\\Data\\BestOrientations.CSV"))
+            using (var writer = new StreamWriter(@"C:\\Users\\galon\\source\\repos\\OOOT\\Data\\BestOrientations3.CSV"))
             using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
             {
                 csv.WriteRecords(Data);
