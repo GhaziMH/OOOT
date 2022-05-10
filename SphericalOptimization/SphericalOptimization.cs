@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using OptimizationToolbox;
 using StarMathLib;
 
@@ -39,7 +38,6 @@ namespace SphericalOptimization
 
 
         public SortedList<double, double[]> sortedBest { get; private set; }
-
 
         #endregion
 

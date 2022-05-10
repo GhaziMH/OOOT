@@ -6,7 +6,7 @@ using OptimizationToolbox;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
-using TVGL.Numerics;
+using CsvHelper;
 
 namespace SphericalOptimization
 {
@@ -16,20 +16,25 @@ namespace SphericalOptimization
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2252:This API requires opting into preview features", Justification = "<Pending>")]
         static void Main(string[] args)
         {
-            Parameters.Verbosity = OptimizationToolbox.VerbosityLevels.Everything;
+            //Parameters.Verbosity = OptimizationToolbox.VerbosityLevels.Everything;
             // this next line is to set the Debug statements from OOOT to the Console.
-            Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
+            //Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
 
             double maxAngle = Math.PI * 3 / 4;
             var f_values = new List<double>();
             var dir_x = new List<double>();
             var dir_y = new List<double>();
             var dir_z = new List<double>();
-
-            foreach (var filename in Directory.GetFiles(@"C:\Users\galon\source\repos\TVGL\TestFiles", "*.stl",
-                SearchOption.AllDirectories)) 
+            var Data = new List<SaveData>();
+            var AllFiles = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
+                SearchOption.AllDirectories).ToList();
+            int counter= AllFiles.Count;
+            //for(int i = 0; i < counter-2; i++)
+             //   AllFiles.RemoveAt(0);
+            foreach (var filename in AllFiles) 
             {
-                TVGL.IOFunctions.IO.Open(filename, out TessellatedSolid ts);
+                TVGL.IO.Open(filename, out TessellatedSolid ts);
+                Console.WriteLine("Current File " + (AllFiles.IndexOf(filename)+1) + " / " + counter);
                 Console.WriteLine("optimizing...");
                 double R = 0.0;
                 foreach (var v in ts.Vertices)
@@ -42,7 +47,7 @@ namespace SphericalOptimization
                 double thickness = minHeight * 0.1;
                 // 10% of the total length is considered as a min height from printing bed
 
-                Presenter.ShowAndHang(ts);
+                //Presenter.ShowAndHang(ts);
                 var optMethod = new SphericalOptimization();
 
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationY(1.5));
@@ -70,15 +75,28 @@ namespace SphericalOptimization
                  * F* = 0.00772036716239199
                  * NumEvals = 245
                  */
+                Data.Add(new SaveData
+                {
+                    File = filename,
+                    Cost = fStar,
+                    NumEvals = (int)optMethod.numEvals,
+                    Best_Dir_X = xStar[0],
+                    Best_Dir_Y = xStar[1],
+                    Best_Dir_Z = xStar[2],
+                });
+                //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness, xStar);
 
-                PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts);
-
+            }
+            using (var writer = new StreamWriter(@"C:\\Users\\galon\\source\\repos\\OOOT\\Data\\BestOrientations.CSV"))
+            using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+            {
+                csv.WriteRecords(Data);
             }
             Console.ReadKey();
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2252:This API requires opting into preview features", Justification = "<Pending>")]
-        static void PlotDirections(IList<double> keys, IList<double[]> values, TessellatedSolid ts)
+        static void PlotDirections(IList<double> keys, IList<double[]> values, TessellatedSolid ts, double thickness, double [] d)
         {
             var numToShow = keys.Count;
             var max = keys[0];
@@ -89,14 +107,26 @@ namespace SphericalOptimization
             var colors = new List<TVGL.Color>();
             for (int i = 0; i < numToShow; i++)
             {
-                plotVertices.Add(new Vertex(0.03 * (19 + (keys[i] / max)) * (new TVGL.Numerics.Vector3(values[i]))));
+                plotVertices.Add(new Vertex(0.03 * (19 + (keys[i] / max)) * (new TVGL.Vector3(values[i]))));
                 //colors.Add(TVGL.Color.HSVtoRGB((float)rankFraction[i], 1, 1));
                 colors.Add(TVGL.Color.HSVtoRGB((float)(keys[i] / max), 1, 1));
                 Console.WriteLine(keys[i]);
             }
             IEnumerable<IEnumerable<Vector3>> xxx = plotVertices.Select(x => new List<Vector3> { Vector3.Zero, x.Coordinates });
-            Presenter.ShowAndHang(ts);
-            Presenter.ShowVertexPaths(xxx,null,1);
+            //Presenter.ShowAndHang(ts);
+            //Presenter.ShowVertexPaths(xxx,null,1);
+            //Presenter.ShowAndHang(SphericalOptimizationTest.ShowBestShape.ShowShape(new Vector3(d), ts, thickness));
+        }
+
+        public class SaveData
+        {
+            public String File { set; get; }
+            public double Cost { set; get; }
+            public int NumEvals { set; get; }
+            public double Best_Dir_X { set; get; }
+            public double Best_Dir_Y { set; get; }
+            public double Best_Dir_Z { set; get; }
+
         }
     }
 }

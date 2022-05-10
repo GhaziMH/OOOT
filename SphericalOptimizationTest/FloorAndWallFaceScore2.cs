@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using OptimizationToolbox;
 using TVGL;
-using TVGL.Numerics;
-using TVGL.TwoDimensional;
 
 namespace SphericalOptimizationTest
 {
@@ -45,16 +43,10 @@ namespace SphericalOptimizationTest
                 x2 += face.Area * StaircaseEffectScore(dot);
             }
             double x3 = 0.0;
-            double total = w1 * x1 + w2 * x2 + w3 * x3;
-            Console.WriteLine("Current Direction: " + ((decimal)d.X) + " , " + ((decimal)d.Y) + " , " + ((decimal)d.Z));
-            if (total == double.PositiveInfinity)
-                Console.WriteLine("Total cost is larger than current best cost");
-            else
-                Console.WriteLine("Total Cost: " + ((decimal)total));
-            //if (total<bestObjFunc)
-            //{
-            //    //bestTessellatedSolid=
-            //}
+            double total = w1 * x1 + w2 * 0 + w3 * x3;
+            //Console.WriteLine("Current Direction: " + ((decimal)d.X) + " , " + ((decimal)d.Y) + " , " + ((decimal)d.Z));
+            //Console.WriteLine("Total Cost: " + ((decimal)total));
+            
             return total;
         }
 
@@ -66,11 +58,16 @@ namespace SphericalOptimizationTest
 
         private double SupportStructureScore(Vector3 d, double currentBest = double.PositiveInfinity)
         {
-            var css_i = TVGL.Boolean_Operations.Slice.GetUniformlySpacedCrossSections(
-                tessellatedSolid, d, double.NaN, -1, thickness).ToList();
-            var SolidOriginal = TVGL.Boolean_Operations.Slice.GetUniformlySpacedCrossSections(
+            var SolidOriginal = TVGL.Slice.GetUniformlySpacedCrossSections(
                 tessellatedSolid, d, double.NaN, -1, 0.5 * thickness).ToList();
-            var verts = new List<List<Vector3>>();
+            var solid = CrossSectionSolid.CreateFromTessellatedSolid(tessellatedSolid, d, SolidOriginal.Count());
+            var css_i = new List<Polygon>[(int)(SolidOriginal.Count()/2)];
+
+            for (int i = 0; i < css_i.Count(); i++)
+            {
+                css_i[i] = SolidOriginal[i*2];
+            }
+            /*var verts = new List<List<Vector3>>();
             for (int i = 0; i < SolidOriginal.Count(); i++) 
             {
                 foreach(var j in SolidOriginal[i])
@@ -86,6 +83,7 @@ namespace SphericalOptimizationTest
                 }
             }
             Presenter.ShowVertexPaths(verts, null, 0.5);
+            Presenter.ShowAndHang(solid);*/
             var Area = 0.0;
             var Area2 = 0.0;
             for (int i = 1; i < css_i.Count(); i++)
@@ -112,33 +110,26 @@ namespace SphericalOptimizationTest
                 //if (Area2 > 0 & Area2 < currentBest)
                  //   return double.PositiveInfinity;
                 css_i[i] = temp_css;
-                Area += PolygonOperations.Subtract(css_i[i], SolidOriginal[(i * 2) - 1]).Select(x => x.Area).Sum();
+                if (i != css_i.Count() - 1)
+                    Area += PolygonOperations.Subtract(css_i[i], SolidOriginal[(i * 2) + 1]).Select(x => x.Area).Sum();
+                else if ((double)SolidOriginal.Count() / (double)css_i.Count() != 2)
+                        Area += SolidOriginal.Last().Select(x => x.Area).Sum();
+                
+            }
 
-            }
-            if (SolidOriginal.Count() / css_i.Count() != 2) 
-            {
-                foreach (var A in SolidOriginal.Last())
-                    Area += A.Area;
-            }
-            
+            /*
             var newcss = new List<CrossSectionSolid>();
             var newcss2 = new List<Solid>();
             for (int i = 0; i < css_i.Count(); i++)
             {
                 newcss.Add(TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i*thickness, thickness, css_i[i], 1e-10, UnitType.unspecified));
                 newcss2.Add(newcss[i].ConvertToTessellatedExtrusions(false, false));
-            }
-            Presenter.ShowAndHang(newcss2);
+            }*/
+            //Presenter.ShowAndHang(newcss2);
             return Math.Abs((Area2 * thickness / tessellatedSolid.Volume) - 1);
         }
 
 
-        private TessellatedSolid GetPrintableShape(Vector3 d)
-        {
-            // printing bed is assumed to change in dimension 
-
-            return new TessellatedSolid();
-        }
             private Vector3 MakeUnitVectorFromSpherical(double inclinationAngle, double azimuthalAngle)
         {
             var sinInclination = Math.Sin(inclinationAngle);
@@ -147,5 +138,42 @@ namespace SphericalOptimizationTest
             var z = Math.Cos(inclinationAngle);
             return (new Vector3(x, y, z)).Normalize();
         }
+    }
+    public class ShowBestShape
+    {
+        public static List<Solid> ShowShape(Vector3 d, TessellatedSolid ts, double thickness)
+        {
+            // printing bed is assumed to change in dimension 
+            var css_i = TVGL.Slice.GetUniformlySpacedCrossSections(
+                ts, d, double.NaN, -1, thickness).ToList();
+            var TS = new List<Solid>();
+            for (int i = 1; i < css_i.Count(); i++)
+            {
+                var temp_css = new List<Polygon>();
+                if (css_i[i - 1] is null)
+                    css_i[i] = null;
+                else
+                {
+                    foreach(var next_layer in  css_i[i])
+                    {
+                        foreach (var current_layer in css_i[i - 1])
+                        {
+                            var interaction = current_layer.GetPolygonInteraction(next_layer);
+                            if (!interaction.IntersectionWillBeEmpty())
+                            {
+                                temp_css.Add(next_layer);
+                                break;
+                            }
+                        }
+                    }
+                }
+                css_i[i] = temp_css;
+                var newcss = TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i * thickness, thickness, css_i[i], 1e-10, UnitType.unspecified);
+                TS.Add(newcss.ConvertToTessellatedExtrusions(false, false));
+            }
+            //Presenter.ShowAndHang(TS);
+            return TS;
+        }
+
     }
 }
