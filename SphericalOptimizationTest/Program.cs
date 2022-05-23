@@ -25,18 +25,35 @@ namespace SphericalOptimization
             var dir_x = new List<double>();
             var dir_y = new List<double>();
             var dir_z = new List<double>();
-            var Data = new List<SaveData>();
-            var filename = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
-                SearchOption.AllDirectories).ToList();
+            var filename = FindParentDirectory("TestFiles").GetFiles("*").ToList();
+            string DirData = Directory.GetParent(Directory.GetParent(filename[0].FullName).FullName).FullName + "\\Data\\";
             
-            int counter= filename.Count;
+
+            //var filename = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
+            //    SearchOption.AllDirectories).ToList();
+
+            int counter = filename.Count;
             //for(int i = 0; i < counter-2; i++)
             //   AllFiles.RemoveAt(0);
-            for (int i = 0; i < counter; i++)  
+            
+
+            var Data = new List<SaveData>();
+
+            for (int i = 0; i < counter; i++)
             {
-                TVGL.IO.Open(filename[i], out TessellatedSolid ts);
-                Console.WriteLine("Current File " + (filename.IndexOf(filename[i])+1) + " / " + counter);
+                var Duration = new Stopwatch();
+                Duration.Start();
+                TVGL.IO.Open(filename[i].FullName, out TessellatedSolid ts);
+                string name = filename[i].Name;
+                Console.WriteLine("Current file name: " + name);
+                Console.WriteLine("Current file " + (i + 1) + " / " + counter);
                 Console.WriteLine("optimizing...");
+                /*
+                ts.Transform(new Matrix4x4(1.0, 0.0, 0.0, 0.0,
+                                  0.0, 1.0, 0.0, 0.0,
+                                  0.0, 0.0, 1.0, 0.0,
+                                  -ts.Center.X, -ts.Center.Y, -ts.Center.Z, 1));
+                */
                 double R = 0.0;
                 foreach (var v in ts.Vertices)
                 {
@@ -46,6 +63,26 @@ namespace SphericalOptimization
                 }
                 double minHeight = (Math.Sqrt(R)) * 0.2;
                 double thickness = minHeight * 0.1;
+                var LargestArea = 0.0;
+                var DirLargestArea = Vector3.Zero;
+                var CH_Normals = ts.ConvexHull.Faces.Select(x => x.Normal).ToHashSet();
+                CH_Normals.Add(Vector3.UnitX);
+                CH_Normals.Add(Vector3.UnitY);
+                CH_Normals.Add(Vector3.UnitZ);
+                CH_Normals.Add(-1 * Vector3.UnitX);
+                CH_Normals.Add(-1 * Vector3.UnitY);
+                CH_Normals.Add(-1 * Vector3.UnitZ);
+
+                foreach (var currentDir in CH_Normals)
+                {
+                    var currenttestingLayer = Slice.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness, true)[0].Select(x => x.Area).Sum();
+                    if (LargestArea < currenttestingLayer)
+                    {
+                        LargestArea = currenttestingLayer;
+                        DirLargestArea = currentDir;
+                    }
+                }
+
                 // 10% of the total length is considered as a min height from printing bed
 
                 //Presenter.ShowAndHang(ts);
@@ -53,8 +90,9 @@ namespace SphericalOptimization
 
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationY(1.5));
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationZ(1.25));
-                optMethod.Add(new SphericalOptimizationTest.FloorAndWallFaceScore2(ts,thickness)); // obj fun
-                optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
+                optMethod.Add(new SphericalOptimizationTest.FloorAndWallFaceScore3(ts, thickness,LargestArea)); // obj fun
+                optMethod.Add(new MaxSpanInPopulationConvergence(1e-1));
+
                 /* Let us start the search from a specific point. */
                 double[] xInit = new[] { 0.0, 0.0 };//,100};
                 var fStar = optMethod.Run(out var xStar, xInit);
@@ -64,10 +102,13 @@ namespace SphericalOptimization
 
                 f_values.Add(fStar);
                 //dir_x.Add(xStar.)
+                Duration.Stop(); var Duration2 = new Stopwatch();Duration2.Start();
                 Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
                 Console.WriteLine("X* = " + xStar.MakePrintString());
                 Console.WriteLine("F* = " + fStar, 1);
                 Console.WriteLine("NumEvals = " + optMethod.numEvals);
+                Console.WriteLine("RunTime = " + Duration.Elapsed);
+                Console.WriteLine("#######################################################");
                 /* Since there is no randomness in the process, you should get the following
                  * response:
                  * No inequalities specified.
@@ -76,23 +117,97 @@ namespace SphericalOptimization
                  * F* = 0.00772036716239199
                  * NumEvals = 245
                  */
-                Data.Add(new SaveData
+
+                //var CurrentData = new List<SaveData>();
+                for (int j = 0; j < optMethod.sortedBest.Count; j++)
                 {
-                    File = Path.GetFileName(filename[i]),
-                    Cost = fStar,
+                    Data.Add(new SaveData
+                    {
+                        Filename = name,
+                        Best = (j + 1).ToString(),
+                        Function = optMethod.sortedBest.Keys[j],
+                        NumEvals = (int)optMethod.numEvals,
+                        X = optMethod.sortedBest.Values[j][0],
+                        Y = optMethod.sortedBest.Values[j][1],
+                        Z = optMethod.sortedBest.Values[j][2],
+                        RunTime_sec = Duration.Elapsed
+
+                    });
+                }
+
+               
+
+                /*
+                 * Data.Add(new SaveData
+                {
+                    Filename = name,
+                    Best = "First Best",
+                    Function = fStar,
                     NumEvals = (int)optMethod.numEvals,
-                    Best_Dir_X = xStar[0],
-                    Best_Dir_Y = xStar[1],
-                    Best_Dir_Z = xStar[2],
+                    X = xStar[0],
+                    Y = xStar[1],
+                    Z = xStar[2],
+                    RunTime_sec = Duration.Elapsed
                 });
+                for (int j = 1; j < optMethod.sortedBest.Count; j++)
+                {
+                    if (Math.Abs(optMethod.sortedBest.Keys[j] - optMethod.sortedBest.Keys[0]) <= 1e-10)
+                    {
+                        Data.Add(new SaveData
+                        {
+                            Filename = "",
+                            Best = "Same cost, different direction",
+                            Function = optMethod.sortedBest.Keys[j],
+                            NumEvals = (int)optMethod.numEvals,
+                            X = optMethod.sortedBest.Values[j][0],
+                            Y = optMethod.sortedBest.Values[j][1],
+                            Z = optMethod.sortedBest.Values[j][2],
+                            RunTime_sec = Duration2.Elapsed
+                        });
+                    }
+                    else
+                    {
+                        Data.Add(new SaveData
+                        {
+                            Filename = "",
+                            Best = "Second Best",
+                            Function = optMethod.sortedBest.Keys[j],
+                            NumEvals = (int)optMethod.numEvals,
+                            X = optMethod.sortedBest.Values[j][0],
+                            Y = optMethod.sortedBest.Values[j][1],
+                            Z = optMethod.sortedBest.Values[j][2],
+                            RunTime_sec = Duration2.Elapsed
+                        });
+                        break;
+                    }
+                }
+                
+                 */
                 //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness, xStar);
 
             }
-            using (var writer = new StreamWriter(@"C:\\Users\\galon\\source\\repos\\OOOT\\Data\\BestOrientations3.CSV"))
+            var n = Directory.GetFiles(@DirData, "*",
+                SearchOption.AllDirectories).Length;
+            string f;
+            if (n == 0)
+                f = "TestFile_001";
+            else
+            {
+                n++;
+                if (n < 10)
+                    f = "TestFile_00" + n;
+                else if (n < 100)
+                    f = "TestFile_0" + n;
+                else
+                    f = "TestFile_" + n;
+            }
+
+            using (var writer = new StreamWriter(DirData + f + ".CSV"))
             using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
             {
                 csv.WriteRecords(Data);
             }
+
             Console.ReadKey();
         }
 
@@ -104,31 +219,56 @@ namespace SphericalOptimization
             var rank = Enumerable.Range(0, keys.Count);
             var rankFraction = rank.Select(x => x / (double)numToShow).ToList();
             //rankFraction.Reverse();
-            var plotVertices = new List<Vertex>();
+            var plotVertices = new List<List<Vertex>>();
+            var plotvectors = new List<List<Vector3>>();
             var colors = new List<TVGL.Color>();
             for (int i = 0; i < numToShow; i++)
             {
-                plotVertices.Add(new Vertex(0.03 * (19 + (keys[i] / max)) * (new TVGL.Vector3(values[i]))));
+                plotVertices.Add(new List<Vertex> { new Vertex(Vector3.Zero), new Vertex(0.03 * (19 + (keys[i] / max)) * new Vector3(values[i])) });
+                plotvectors.Add(new List<Vector3> { Vector3.Zero, 0.03 * (19 + (keys[i] / max)) * new Vector3(values[i]) });
                 //colors.Add(TVGL.Color.HSVtoRGB((float)rankFraction[i], 1, 1));
                 colors.Add(TVGL.Color.HSVtoRGB((float)(keys[i] / max), 1, 1));
-                Console.WriteLine(keys[i]);
+                //Console.WriteLine(keys[i]);
             }
-            IEnumerable<IEnumerable<Vector3>> xxx = plotVertices.Select(x => new List<Vector3> { Vector3.Zero, x.Coordinates });
-            //Presenter.ShowAndHang(ts);
-            //Presenter.ShowVertexPaths(xxx,null,1);
+            //var xxx = plotVertices.Select(x => new List<Vector3> { Vector3.Zero, x.Coordinates }).ToList();
+            Presenter.ShowAndHang(ts);
+            Presenter.ShowVertexPaths(plotVertices,null,0, colors);
+            {
+                var lineVisuals = Presenter.GetVertexPaths(plotvectors, thickness, colors, plotvectors.Select(x => false));
+                var vm = new Window3DPlotViewModel();
+                vm.Add(lineVisuals);
+                //vm.Add(solids.Where(s => s != null).SelectMany(s => ConvertTessellatedSolidToMGM3D((TessellatedSolid)s)));
+                
+                var window = new Window3DPlot(vm);
+
+                window.ShowDialog();
+            }
+            
             //Presenter.ShowAndHang(SphericalOptimizationTest.ShowBestShape.ShowShape(new Vector3(d), ts, thickness));
         }
-
         public class SaveData
         {
-            public String File { set; get; }
-            public double Cost { set; get; }
+            public String Filename { set; get; }
+            public string Best {  set; get; }
+            public double Function { set; get; }
             public int NumEvals { set; get; }
-            public double Best_Dir_X { set; get; }
-            public double Best_Dir_Y { set; get; }
-            public double Best_Dir_Z { set; get; }
-
+            public double X { set; get; }
+            public double Y { set; get; }
+            public double Z { set; get; }
+            public TimeSpan RunTime_sec { set; get; }
         }
+
+        static DirectoryInfo FindParentDirectory(string targetFolder)
+        {
+            var dir = new DirectoryInfo(".");
+            while (!Directory.Exists(Path.Combine(dir.FullName, targetFolder)))
+            {
+                if (dir == null) throw new FileNotFoundException("Target folder not found", targetFolder);
+                dir = dir.Parent;
+            }
+            return new DirectoryInfo(Path.Combine(dir.FullName, targetFolder));
+        }
+
     }
 }
 

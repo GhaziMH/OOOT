@@ -7,7 +7,7 @@ using TVGL;
 
 namespace SphericalOptimizationTest
 {
-    internal class FloorAndWallFaceScore2 : IObjectiveFunction
+    internal class FloorAndWallFaceScore3 : IObjectiveFunction
     {
         private double thickness;
         private double LargestArea;
@@ -23,7 +23,7 @@ namespace SphericalOptimizationTest
         private static double denomProx = 1 + Math.Exp(-b);
 
 
-        public FloorAndWallFaceScore2(TessellatedSolid tessellatedSolid, double thickness, double LargestArea)
+        public FloorAndWallFaceScore3(TessellatedSolid tessellatedSolid, double thickness, double LargestArea)
         {
             this.tessellatedSolid = tessellatedSolid;
             this.thickness = thickness;
@@ -47,19 +47,20 @@ namespace SphericalOptimizationTest
                 x2 += face.Area * StaircaseEffectScore(dot);
             }
             */
-            var FirstLayer = FirstLayerScore(test, LargestArea);
-            //var x1 = SupportStructureScore(d, test);
-            var x1 = 0;
+            //var FirstLayer = FirstLayerScore(test, LargestArea);
+            var FirstLayer = 0;
+            var x1 = SupportStructureScore(d, test);
+            //var x1 = 0;
 
             if (x1 < 0)
                 Console.WriteLine("negative support score");
             if (FirstLayer < 0)
                 Console.WriteLine("negative first layer scroe");
             double x3 = 0.0;
-            //double total = w1 * x1 + 1 * FirstLayer + w3 * x3;
+            //double total = 1 * x1 + 1 * FirstLayer + w3 * x3;
             //Console.WriteLine("Total Cost: " + ((decimal)total));
 
-            return FirstLayer;
+            return x1;
         }
         private List<Polygon> GetFirstLayer(Vector3 direction, double offset = 1E-6)
         {
@@ -242,127 +243,6 @@ namespace SphericalOptimizationTest
         }
     }
 
-    public class ShowBestShape
-    {
-        public static List<Solid> ShowShape(Vector3 d, TessellatedSolid ts, double thickness)
-        {
-            // printing bed is assumed to change in dimension 
-            var css_i = TVGL.Slice.GetUniformlySpacedCrossSections(
-                ts, d, double.NaN, -1, thickness).ToList();
-            var TS = new List<Solid>();
-            css_i.Insert(0, Slice.GetUniformlySpacedCrossSections(ts, d, 1E-6, -1, thickness, true)[0]);
-            for (int i = 1; i < css_i.Count; i++)
-            {
-                var temp_css = new List<Polygon>();
-                foreach (var next_layer in css_i[i])
-                {
-                    foreach (var current_layer in css_i[i - 1])
-                    {
-                        var interaction = current_layer.GetPolygonInteraction(next_layer);
-                        if (!interaction.IntersectionWillBeEmpty())
-                        // Add exception for A is a hole inside B
-                        {
-                            temp_css.Add(next_layer);
-                            break;
-                        }
-                    }
-                }
+    
 
-                //if (temp_css.Count == 0)
-                {
-                //    css_i.RemoveRange(i, css_i.Count);
-                 //   break;
-                }
-            }
-
-            for (int i = 0; i < css_i.Count; i++)
-            {
-
-                var newcss = TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i * thickness, thickness, new List<Polygon> { css_i[i][0], css_i[i][0] }, 1e-10, UnitType.unspecified);
-                TS.Add(newcss.ConvertToTessellatedExtrusions(false, false));
-                if (i >= 22)
-                {
-                    Presenter.ShowAndHang(newcss);
-                    Presenter.ShowAndHang(TS);
-                }
-            }
-            //Presenter.ShowAndHang(TS);
-            return TS;
-        }
-
-    }
-
-    public class Loops
-    {
-        public static List<Polygon> GetLoops(Dictionary<Edge, Vector2> edgeDictionary, Vector3 normal, double distanceToOrigin,
-            out Dictionary<Vertex2D, Edge> e2VDictionary)
-        {
-            var polygons = new List<Polygon>();
-            e2VDictionary = new Dictionary<Vertex2D, Edge>();
-            while (edgeDictionary.Any())
-            {
-                var path = new List<Vector2>();
-                var edgesInLoop = new List<Edge>();
-                var firstEdgeInLoop = edgeDictionary.First().Key;
-                var currentEdge = firstEdgeInLoop;
-                var finishedLoop = false;
-                PolygonalFace nextFace = null;
-                do
-                {
-                    var intersectVertex2D = edgeDictionary[currentEdge];
-                    edgeDictionary.Remove(currentEdge);
-                    edgesInLoop.Add(currentEdge);
-                    path.Add(intersectVertex2D);
-                    var prevFace = nextFace;
-                    if (prevFace == null)
-                        nextFace = (currentEdge.From.Dot(normal) < distanceToOrigin) ? currentEdge.OtherFace : currentEdge.OwnedFace;
-                    else nextFace = (nextFace == currentEdge.OwnedFace) ? currentEdge.OtherFace : currentEdge.OwnedFace;
-                    Edge nextEdge = null;
-                    foreach (var whichEdge in nextFace.Edges)
-                    {
-                        if (currentEdge == whichEdge) continue;
-                        if (whichEdge == firstEdgeInLoop)
-                        {
-                            finishedLoop = true;
-                            if (path.Count > 2)
-                                AddToPolygons(path, edgesInLoop, polygons, e2VDictionary);
-                            break;
-                        }
-                        else if (edgeDictionary.ContainsKey(whichEdge))
-                        {
-                            nextEdge = whichEdge;
-                            break;
-                        }
-                    }
-                    if (!finishedLoop && nextEdge == null)
-                    {
-                        output("Incomplete loop.", 3);
-                        if (path.Count > 2)
-                            AddToPolygons(path, edgesInLoop, polygons, e2VDictionary);
-                        finishedLoop = true;
-                    }
-                    else currentEdge = nextEdge;
-                } while (!finishedLoop);
-            }
-            return polygons.CreateShallowPolygonTrees(false);
-        }
-        public static TVGL.VerbosityLevels Verbosity = TVGL.VerbosityLevels.OnlyCritical;
-
-        public static bool output(object message, int verbosityLimit = 0)
-        {
-            if ((verbosityLimit > (int)Verbosity)
-                || string.IsNullOrEmpty(message.ToString()))
-                return false;
-            Debug.WriteLine(message);
-            return true;
-        }
-        public static void AddToPolygons(List<Vector2> path, List<Edge> edgesInLoop, List<Polygon> polygons, Dictionary<Vertex2D, Edge> e2VDictionary)
-        {
-            var polygon = new Polygon(path);
-            polygons.Add(polygon);
-            for (int i = 0; i < polygon.Vertices.Count; i++)
-                e2VDictionary.Add(polygon.Vertices[i], edgesInLoop[i]);
-        }
-
-    }
 }

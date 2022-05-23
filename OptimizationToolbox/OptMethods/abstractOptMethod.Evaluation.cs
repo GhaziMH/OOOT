@@ -31,6 +31,7 @@
  *     at http://designengrlab.github.io/OOOT/.
  *************************************************************************/
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using StarMathLib;
@@ -103,7 +104,7 @@ namespace OptimizationToolbox
         /// <summary>
         /// The function data
         /// </summary>
-        private readonly Dictionary<IOptFunction, RecentFunctionEvalStore> functionData;
+        private readonly ConcurrentDictionary<IOptFunction, RecentFunctionEvalStore> functionData;
         /// <summary>
         /// The same cand comparer
         /// </summary>
@@ -161,7 +162,7 @@ namespace OptimizationToolbox
             /**********IOptFunction.calculate(x)***************/
             fValue = function.calculate(point);
             /**************************************************/
-            functionData[function].Add(pointClone, fValue);
+            functionData[function].TryAdd(pointClone, fValue);
             functionData[function].numEvals++;
             SearchIO.output("f =" + fValue + " (f'n eval #" + numEvals + ")", 4);
             return fValue;

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using OptimizationToolbox;
 using StarMathLib;
+using System.Threading.Tasks;
 
 namespace SphericalOptimization
 {
@@ -93,8 +94,18 @@ namespace SphericalOptimization
         {
             var icosaEdgeScores = new double[30];
             // first evaluate all the 30 faces of a triacontahedron
+#if RELEASE
+            Parallel.For(0, icosaEdgeScores.Length, i =>
+#else
             for (int i = 0; i < PlatonicConstants.TriacontahedronDirections.Length; i++)
+#endif
+            {
                 icosaEdgeScores[i] = calc_f(PlatonicConstants.TriacontahedronDirections[i]);
+
+            }
+#if RELEASE
+            );
+#endif
             // second, find icosahedron faces that are not worth pursuing
             var icosaFacesToIgnore = new HashSet<int>();
             for (int i = 0; i < PlatonicConstants.IcosaEdgeToFaces.Length; i++)
@@ -108,17 +119,29 @@ namespace SphericalOptimization
                 if (otherRightTriaContaIndices.Item1 >= otherLeftTriaContaIndices.Item2)
                     icosaFacesToIgnore.Add(rightFaceIndex);
             }
+
             //third, complete barycentric nelder mead for icosahedron faces that are not in the ignore list
             var bestResults = new ConcurrentBag<(double, double[], int)>();
+#if RELEASE
+            Parallel.For(0, 20, i =>
+#else
+
             for (int i = 0; i < 20; i++)
+#endif
             {
-                if (icosaFacesToIgnore.Contains(i)) continue;
-                var vertexNormals = PlatonicConstants.IcosaTriangleVertices[i]
-                    .Select(j => PlatonicConstants.DodechedronDirections[j]).ToArray();
-                var thisFStar = BarycentricSphericalNelderMead(vertexNormals, PlatonicConstants.IcosaTriangleEdges[i]
-                    .Select(v => icosaEdgeScores[v]).ToList(), out double[] thisXStar);
-                bestResults.Add((thisFStar, thisXStar, i));
+                if (!icosaFacesToIgnore.Contains(i))
+                {
+                    var vertexNormals = PlatonicConstants.IcosaTriangleVertices[i]
+                        .Select(j => PlatonicConstants.DodechedronDirections[j]).ToArray();
+                    var thisFStar = BarycentricSphericalNelderMead(vertexNormals, PlatonicConstants.IcosaTriangleEdges[i]
+                        .Select(v => icosaEdgeScores[v]).ToList(), out double[] thisXStar);
+                    bestResults.Add((thisFStar, thisXStar, i));
+                }
             }
+#if RELEASE
+            );
+#endif
+
             sortedBest = new SortedList<double, double[]>(new optimizeSort(optimize.minimize));
             foreach (var result in bestResults)
                 sortedBest.Add(result.Item1, ConvertTo3DUnitVector(result.Item2,
@@ -126,13 +149,14 @@ namespace SphericalOptimization
                     .Select(j => PlatonicConstants.DodechedronDirections[j]).ToArray()));
             for (int i = sortedBest.Count - 2; i >= 0; i--)
             {
-                if (sortedBest.Keys[i].IsPracticallySame(sortedBest.Keys[i + 1], 1e-10) && 
-                    sortedBest.Values[i].dotProduct(sortedBest.Values[i+1]).IsPracticallySame(1.0, 1e-3))
+                if (sortedBest.Keys[i].IsPracticallySame(sortedBest.Keys[i + 1], 1e-10) &&
+                    sortedBest.Values[i].dotProduct(sortedBest.Values[i + 1]).IsPracticallySame(1.0, 1e-3))
                     sortedBest.RemoveAt(i + 1);
             }
             xStar = sortedBest.Values[0];
             return sortedBest.Keys[0];
         }
+    
         private double BarycentricSphericalNelderMead(double[][] vertexNormals, List<double> initialFValues, out double[] thisXStar)
         {
             var vertices = new SortedList<double, double[]>(new optimizeSort(optimize.minimize));
@@ -141,7 +165,7 @@ namespace SphericalOptimization
             vertices.Add(initialFValues[2], new[] { 0.5, 0.0 });
             while (notConverged(k, numEvals, vertices.Keys[0], vertices.Values[0], vertices.Values))
             {
-                #region Compute the REFLECTION POINT
+#region Compute the REFLECTION POINT
 
                 // computing the average for each variable for n variables NOT n+1
                 var Xm = new double[n];
@@ -159,19 +183,19 @@ namespace SphericalOptimization
                 var fXr = OutsideOfTriangle(Xr) ? double.PositiveInfinity :
                     calc_f(ConvertTo3DUnitVector(Xr, vertexNormals));
                 SearchIO.output("x_r = " + MakePrintString(Xr), 4);
-                #endregion
+#endregion
 
-                #region if reflection point is better than best
+#region if reflection point is better than best
 
                 if (fXr < vertices.Keys[0])
                 {
-                    #region Compute the Expansion Point
+#region Compute the Expansion Point
                     var Xe = CloneVertex(vertices.Values[n]);
                     for (var i = 0; i < n; i++)
                         Xe[i] = (1 + rho * chi) * Xm[i] - rho * chi * Xe[i];
                     var fXe = OutsideOfTriangle(Xe) ? double.PositiveInfinity :
                     calc_f(ConvertTo3DUnitVector(Xe, vertexNormals));
-                    #endregion
+#endregion
 
                     vertices.RemoveAt(n);  // remove the worst
                     if (fXe < fXr)
@@ -185,12 +209,12 @@ namespace SphericalOptimization
                         SearchIO.output("reflect", 4);
                     }
                 }
-                #endregion
-                #region if reflection point is NOT better than best
+#endregion
+#region if reflection point is NOT better than best
 
                 else
                 {
-                    #region but if it's better than second worst, still do reflect
+#region but if it's better than second worst, still do reflect
 
                     if (fXr < vertices.Keys[n - 1])
                     {
@@ -198,11 +222,11 @@ namespace SphericalOptimization
                         vertices.Add(fXr, Xr);
                         SearchIO.output("reflect", 4);
                     }
-                    #endregion
+#endregion
 
                     else
                     {
-                        #region if better than worst, do Outside Contraction
+#region if better than worst, do Outside Contraction
                         if (fXr < vertices.Keys[n])
                         {
                             var Xc = CloneVertex(vertices.Values[n]);
@@ -217,8 +241,8 @@ namespace SphericalOptimization
                                 vertices.Add(fXc, Xc);
                                 SearchIO.output("outside constract", 4);
                             }
-                            #endregion
-                            #region Shrink all others towards best
+#endregion
+#region Shrink all others towards best
                             else
                             {
                                 var newXs = new List<double[]>();
@@ -240,11 +264,11 @@ namespace SphericalOptimization
                                 SearchIO.output("shrink towards best", 4);
                             }
 
-                            #endregion
+#endregion
                         }
                         else
                         {
-                            #region Compute Inside Contraction
+#region Compute Inside Contraction
 
                             var Xcc = CloneVertex(vertices.Values[n]);
                             for (var i = 0; i < n; i++)
@@ -258,8 +282,8 @@ namespace SphericalOptimization
                                 vertices.Add(fXcc, Xcc);
                                 SearchIO.output("inside contract", 4);
                             }
-                            #endregion
-                            #region Shrink all others towards best and flip over
+#endregion
+#region Shrink all others towards best and flip over
 
                             else
                             {
@@ -282,12 +306,12 @@ namespace SphericalOptimization
                                 SearchIO.output("shrink towards best and flip", 4);
                             }
 
-                            #endregion
+#endregion
                         }
                     }
                 }
 
-                #endregion
+#endregion
 
                 k++;
                 SearchIO.output("iter. = " + k, 1);

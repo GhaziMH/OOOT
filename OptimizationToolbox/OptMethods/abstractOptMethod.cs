@@ -31,6 +31,7 @@
  *     at http://designengrlab.github.io/OOOT/.
  *************************************************************************/
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using StarMathLib;
@@ -206,7 +207,7 @@ namespace OptimizationToolbox
             h = new List<IEquality>();
             active = new List<IConstraint>();
             f = new List<IObjectiveFunction>();
-            functionData = new Dictionary<IOptFunction, RecentFunctionEvalStore>();
+            functionData = new ConcurrentDictionary<IOptFunction, RecentFunctionEvalStore>();
         }
 
         /// <summary>
@@ -224,7 +225,7 @@ namespace OptimizationToolbox
                 readInProblemDefinition((ProblemDefinition)function);
             else if (function is IOptFunction)
             {
-                functionData.Add((IOptFunction)function,
+                functionData.TryAdd((IOptFunction)function,
                     new RecentFunctionEvalStore((IOptFunction)function, sameCandComparer,
                         Parameters.DefaultFiniteDifferenceStepSize, Parameters.DefaultFiniteDifferenceMode));
                 if (function is IInequality)

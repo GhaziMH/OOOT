@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="OOOT" Version="1.0.21.422" />
+    <ProjectReference Include="..\OptimizationToolbox\Object-Oriented Optimization Toolbox.csproj" />
   </ItemGroup>
 
 </Project>
