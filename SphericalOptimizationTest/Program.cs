@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using CsvHelper;
+using System.Threading.Tasks;
+
 
 namespace SphericalOptimization
 {
@@ -45,9 +47,7 @@ namespace SphericalOptimization
                 Duration.Start();
                 TVGL.IO.Open(filename[i].FullName, out TessellatedSolid ts);
                 string name = filename[i].Name;
-                Console.WriteLine("Current file name: " + name);
-                Console.WriteLine("Current file " + (i + 1) + " / " + counter);
-                Console.WriteLine("optimizing...");
+
                 /*
                 ts.Transform(new Matrix4x4(1.0, 0.0, 0.0, 0.0,
                                   0.0, 1.0, 0.0, 0.0,
@@ -75,7 +75,7 @@ namespace SphericalOptimization
 
                 foreach (var currentDir in CH_Normals)
                 {
-                    var currenttestingLayer = Slice.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness, true)[0].Select(x => x.Area).Sum();
+                    var currenttestingLayer = SphericalOptimizationTest.QuadricSlicer.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
                     if (LargestArea < currenttestingLayer)
                     {
                         LargestArea = currenttestingLayer;
@@ -85,13 +85,13 @@ namespace SphericalOptimization
 
                 // 10% of the total length is considered as a min height from printing bed
 
-                //Presenter.ShowAndHang(ts);
+                Presenter.ShowAndHang(ts);
                 var optMethod = new SphericalOptimization();
 
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationY(1.5));
                 //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationZ(1.25));
-                optMethod.Add(new SphericalOptimizationTest.FloorAndWallFaceScore3(ts, thickness,LargestArea)); // obj fun
-                optMethod.Add(new MaxSpanInPopulationConvergence(1e-1));
+                optMethod.Add(new SphericalOptimizationTest.MaxVolumeObjFun(ts, thickness,LargestArea)); // obj fun
+                optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
 
                 /* Let us start the search from a specific point. */
                 double[] xInit = new[] { 0.0, 0.0 };//,100};
@@ -100,12 +100,27 @@ namespace SphericalOptimization
                  * we can probe it following the run to get at important data like how the 
                  * process converged. */
 
-                f_values.Add(fStar);
+                optMethod = new SphericalOptimization();
+                optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea));
+                var f1limitConstraint = new SphericalOptimizationTest.MaxVolumeInequality(ts, thickness, LargestArea, fStar * 1.2);
+                optMethod.Add(f1limitConstraint);
+                optMethod.Add(new squaredExteriorPenalty(optMethod,10.0));
+                optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
+                var fStar2 = optMethod.Run(out var xStar2, xInit);
+                var g = new List<double>();
+                foreach (var v in optMethod.sortedBest.Values)
+                    g.Add(f1limitConstraint.calculate(v));
+
+
+                f_values.Add(fStar2);
                 //dir_x.Add(xStar.)
                 Duration.Stop(); var Duration2 = new Stopwatch();Duration2.Start();
+                Console.WriteLine("Current file name: " + name);
+                Console.WriteLine("Current file " + (i + 1) + " / " + counter);
+                Console.WriteLine("optimizing...");
                 Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
-                Console.WriteLine("X* = " + xStar.MakePrintString());
-                Console.WriteLine("F* = " + fStar, 1);
+                Console.WriteLine("X* = " + xStar2.MakePrintString());
+                Console.WriteLine("F* = " + fStar2, 1);
                 Console.WriteLine("NumEvals = " + optMethod.numEvals);
                 Console.WriteLine("RunTime = " + Duration.Elapsed);
                 Console.WriteLine("#######################################################");
@@ -130,62 +145,22 @@ namespace SphericalOptimization
                         X = optMethod.sortedBest.Values[j][0],
                         Y = optMethod.sortedBest.Values[j][1],
                         Z = optMethod.sortedBest.Values[j][2],
-                        RunTime_sec = Duration.Elapsed
+                        RunTime_sec = Duration.Elapsed,
+                        g1 = g[j]
 
                     });
                 }
 
-               
+                var center = ts.Center + (100 * new Vector3(xStar));
+                var sph = new Sphere(center, 10, true);
+                var SphSlices = SphericalOptimizationTest.QuadricSlicer.GetSphericalSections(ts, sph, thickness);
 
-                /*
-                 * Data.Add(new SaveData
-                {
-                    Filename = name,
-                    Best = "First Best",
-                    Function = fStar,
-                    NumEvals = (int)optMethod.numEvals,
-                    X = xStar[0],
-                    Y = xStar[1],
-                    Z = xStar[2],
-                    RunTime_sec = Duration.Elapsed
-                });
-                for (int j = 1; j < optMethod.sortedBest.Count; j++)
-                {
-                    if (Math.Abs(optMethod.sortedBest.Keys[j] - optMethod.sortedBest.Keys[0]) <= 1e-10)
-                    {
-                        Data.Add(new SaveData
-                        {
-                            Filename = "",
-                            Best = "Same cost, different direction",
-                            Function = optMethod.sortedBest.Keys[j],
-                            NumEvals = (int)optMethod.numEvals,
-                            X = optMethod.sortedBest.Values[j][0],
-                            Y = optMethod.sortedBest.Values[j][1],
-                            Z = optMethod.sortedBest.Values[j][2],
-                            RunTime_sec = Duration2.Elapsed
-                        });
-                    }
-                    else
-                    {
-                        Data.Add(new SaveData
-                        {
-                            Filename = "",
-                            Best = "Second Best",
-                            Function = optMethod.sortedBest.Keys[j],
-                            NumEvals = (int)optMethod.numEvals,
-                            X = optMethod.sortedBest.Values[j][0],
-                            Y = optMethod.sortedBest.Values[j][1],
-                            Z = optMethod.sortedBest.Values[j][2],
-                            RunTime_sec = Duration2.Elapsed
-                        });
-                        break;
-                    }
-                }
-                
-                 */
-                //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness, xStar);
+
+                Presenter.ShowAndHang(SphericalOptimizationTest.ShowBestShape.ShowShape(SphSlices, new Vector3(xStar)));
+                PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness, xStar);
 
             }
+
             var n = Directory.GetFiles(@DirData, "*",
                 SearchOption.AllDirectories).Length;
             string f;
@@ -193,7 +168,7 @@ namespace SphericalOptimization
                 f = "TestFile_001";
             else
             {
-                n++;
+                n++;n++;
                 if (n < 10)
                     f = "TestFile_00" + n;
                 else if (n < 100)
@@ -211,7 +186,7 @@ namespace SphericalOptimization
             Console.ReadKey();
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2252:This API requires opting into preview features", Justification = "<Pending>")]
+
         static void PlotDirections(IList<double> keys, IList<double[]> values, TessellatedSolid ts, double thickness, double [] d)
         {
             var numToShow = keys.Count;
@@ -244,7 +219,9 @@ namespace SphericalOptimization
                 window.ShowDialog();
             }
             
-            //Presenter.ShowAndHang(SphericalOptimizationTest.ShowBestShape.ShowShape(new Vector3(d), ts, thickness));
+
+
+            Presenter.ShowAndHang(SphericalOptimizationTest.ShowBestShape.ShowShape(new Vector3(d), ts, thickness));
         }
         public class SaveData
         {
@@ -256,6 +233,7 @@ namespace SphericalOptimization
             public double Y { set; get; }
             public double Z { set; get; }
             public TimeSpan RunTime_sec { set; get; }
+            public double g1 { set; get; }
         }
 
         static DirectoryInfo FindParentDirectory(string targetFolder)

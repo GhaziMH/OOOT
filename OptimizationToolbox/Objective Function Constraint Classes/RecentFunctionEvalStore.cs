@@ -13,6 +13,7 @@
 // ***********************************************************************
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace OptimizationToolbox
@@ -27,11 +28,11 @@ namespace OptimizationToolbox
         /// <summary>
         /// The old evaluations
         /// </summary>
-        readonly Dictionary<double[], double> oldEvaluations;
+        readonly ConcurrentDictionary<double[], double> oldEvaluations;
         /// <summary>
         /// The queue
         /// </summary>
-        readonly Queue<double[]> queue;
+        readonly ConcurrentQueue<double[]> queue;
 
         /// <summary>
         /// Gets or sets the number evals.
@@ -66,8 +67,8 @@ namespace OptimizationToolbox
                 this.finiteDiffStepSize = finiteDiffStepSize;
                 this.findDerivBy = findDerivBy;
             }
-            oldEvaluations = new Dictionary<double[], double>(comparer);
-            queue = new Queue<double[]>();
+            oldEvaluations = new ConcurrentDictionary<double[], double>(comparer);
+            queue = new ConcurrentQueue<double[]>();
         }
 
         #region Implementation of IEnumerable
@@ -178,12 +179,16 @@ namespace OptimizationToolbox
         public void Add(double[] key, double value)
         {
             if (Parameters.MaxFunctionDataStore == 0) return;
-            oldEvaluations.Add(key, value);
+            oldEvaluations.TryAdd(key, value);
             if (queue.Count >= Parameters.MaxFunctionDataStore)
             {
                 SearchIO.output("reducing queue...", 4);
                 for (int i = 0; i < Parameters.FunctionStoreCleanOutStepDown; i++)
-                    Remove(queue.Dequeue());}
+                {
+                    if (queue.TryDequeue(out var removedValue))
+                        Remove(removedValue);
+                }
+            }
             queue.Enqueue(key);
         }
 
@@ -196,7 +201,7 @@ namespace OptimizationToolbox
         /// <exception cref="T:System.NotSupportedException">The <see cref="T:System.Collections.Generic.IDictionary`2" /> is read-only.</exception>
         public bool Remove(double[] key)
         {
-            return oldEvaluations.Remove(key);
+            return oldEvaluations.TryRemove(key, out _);
         }
 
         /// <summary>

@@ -7,7 +7,7 @@ using TVGL;
 
 namespace SphericalOptimizationTest
 {
-    internal class FloorAndWallFaceScore3 : IObjectiveFunction
+    internal class FirstLayer : IObjectiveFunction
     {
         private double thickness;
         private double LargestArea;
@@ -23,7 +23,7 @@ namespace SphericalOptimizationTest
         private static double denomProx = 1 + Math.Exp(-b);
 
 
-        public FloorAndWallFaceScore3(TessellatedSolid tessellatedSolid, double thickness, double LargestArea)
+        public FirstLayer(TessellatedSolid tessellatedSolid, double thickness, double LargestArea)
         {
             this.tessellatedSolid = tessellatedSolid;
             this.thickness = thickness;
@@ -47,20 +47,19 @@ namespace SphericalOptimizationTest
                 x2 += face.Area * StaircaseEffectScore(dot);
             }
             */
-            //var FirstLayer = FirstLayerScore(test, LargestArea);
-            var FirstLayer = 0;
-            var x1 = SupportStructureScore(d, test);
-            //var x1 = 0;
+            var FirstLayer = FirstLayerScore(test, LargestArea);
+            //var x1 = SupportStructureScore(d, test);
+            var x1 = 0;
 
             if (x1 < 0)
                 Console.WriteLine("negative support score");
             if (FirstLayer < 0)
                 Console.WriteLine("negative first layer scroe");
             double x3 = 0.0;
-            //double total = 1 * x1 + 1 * FirstLayer + w3 * x3;
+            //double total = w1 * x1 + 1 * FirstLayer + w3 * x3;
             //Console.WriteLine("Total Cost: " + ((decimal)total));
 
-            return x1;
+            return FirstLayer;
         }
         private List<Polygon> GetFirstLayer(Vector3 direction, double offset = 1E-6)
         {
@@ -119,7 +118,7 @@ namespace SphericalOptimizationTest
 
         private double FirstLayerScore(List<Polygon> FirstLayer, double maxArea)
         {
-            // Area ration of the total surface and first layer that touch the printing bed,
+            // Area ratio of the total surface and first layer that touch the printing bed,
             // The ration Eq.= 0.001*Total/FirstLayer
             // The best achievable value is approximately 0.002, an object consists of a single thin layer 
             // Printing on faces or edges will return a value range from 1E1 to less than 1E6, 
@@ -127,7 +126,7 @@ namespace SphericalOptimizationTest
 
             // return 1E-3 *tessellatedSolid.SurfaceArea / FirstLayer.Sum(x => x.Area);
             // update max score 0 and min score is almost 1
-            return maxArea - FirstLayer.Select(x => x.Area).Sum();
+            return 1 - FirstLayer.Select(x => x.Area).Sum() / maxArea;
             /// Possible future improvments:
             /// 1. measure the first layer score based on printing cases:
             ///     A. Desirable case: 
@@ -243,6 +242,194 @@ namespace SphericalOptimizationTest
         }
     }
 
-    
+    public class ShowBestShape
+    {
+        public static List<Solid> ShowShape(Vector3 d, TessellatedSolid ts, double thickness)
+        {
+            // printing bed is assumed to change in dimension 
+            var css_i = Slice.GetUniformlySpacedCrossSections(
+                ts, d, double.NaN, -1, thickness).ToList();
+            var TS = new List<Solid>();
+            //css_i.Insert(0, Slice.GetUniformlySpacedCrossSections(ts, d, 1E-6, -1, thickness, true)[0]);
+            for (int i = 1; i < css_i.Count; i++)
+            {
+                if (css_i[i].Count > 0)
+                {
+                    var temp_css = new List<Polygon>();
+                    foreach (var next_layer in css_i[i])
+                    {
+                        foreach (var current_layer in css_i[i - 1])
+                        {
+                            var interaction = current_layer.GetPolygonInteraction(next_layer);
+                            if (!interaction.IntersectionWillBeEmpty())
+                            // Add exception for A is a hole inside B
+                            {
+                                temp_css.Add(next_layer);
+                                break;
+                            }
+                        }
+                    }
 
+                    css_i[i] = PolygonOperations.UnionPolygons(temp_css);
+                    
+                    
+                }
+                else
+                    css_i[i].Clear();
+                
+            }
+
+            for (int i = 0; i < css_i.Count; i++)
+            {
+                if (css_i[i].Count > 0)
+                {
+                    var newcss = TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i * thickness, thickness, new List<Polygon> { css_i[i][0], css_i[i][0] }, 1e-10, UnitType.unspecified);
+                    TS.Add(newcss.ConvertToTessellatedExtrusions(false, false));
+                }
+            }
+            //Presenter.ShowAndHang(TS);
+            return TS;
+        }
+
+        public static List<Solid> ShowShape((List<List<Vector3>>[], List<List<PolygonalFace>>[], Sphere[]) Data, Vector3 d )
+        {
+            // printing bed is assumed to change in dimension 
+            var Layers = Data.Item1.Where(x => x != null).Select(x => x).ToList();
+            var Spheres = Data.Item3.ToList();
+            var thickness = Spheres[0].Radius - Spheres[1].Radius;
+            var TS = new List<Solid>();
+
+
+            var css_i = new List<List<Polygon>>();
+            for (int i = 0; i < Layers.Count; i++)
+            {
+                if (Layers[i].Count > 0)
+                {
+                    var temp_css = new List<Polygon>();
+                    for (int j = 0; j < Layers[i].Count; j++)
+                    {
+                        temp_css.Add(new Polygon(Spheres[i].TransformFrom3DTo2D(Layers[i][j], true)));
+                    }
+                    css_i.Add(PolygonOperations.UnionPolygons(temp_css));
+
+                }
+
+            }
+
+            for (int i = 1; i < css_i.Count; i++)
+            {
+                if (css_i[i].Count > 0)
+                {
+                    var temp_css = new List<Polygon>();
+                    foreach (var next_layer in css_i[i])
+                    {
+                        foreach (var current_layer in css_i[i - 1])
+                        {
+                            var interaction = current_layer.GetPolygonInteraction(next_layer);
+                            if (!interaction.IntersectionWillBeEmpty())
+                            // Add exception for A is inside B
+                            {
+                                temp_css.Add(next_layer);
+                                break;
+                            }
+                        }
+                    }
+
+                    css_i[i] = PolygonOperations.UnionPolygons(temp_css);
+
+
+                }
+                else
+                    css_i[i].Clear();
+
+            }
+
+            for (int i = 0; i < css_i.Count; i++)
+            {
+                if (css_i[i].Count > 0)
+                {
+                    var newcss = TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i * thickness, thickness, new List<Polygon> { css_i[i][0], css_i[i][0] }, 1e-10, UnitType.unspecified);
+                    TS.Add(newcss.ConvertToTessellatedExtrusions(false, false));
+                }
+            }
+            //Presenter.ShowAndHang(TS);
+            return TS;
+        }
+
+
+    }
+
+    public class Loops
+    {
+        public static List<Polygon> GetLoops(Dictionary<Edge, Vector2> edgeDictionary, Vector3 normal, double distanceToOrigin,
+            out Dictionary<Vertex2D, Edge> e2VDictionary)
+        {
+            var polygons = new List<Polygon>();
+            e2VDictionary = new Dictionary<Vertex2D, Edge>();
+            while (edgeDictionary.Any())
+            {
+                var path = new List<Vector2>();
+                var edgesInLoop = new List<Edge>();
+                var firstEdgeInLoop = edgeDictionary.First().Key;
+                var currentEdge = firstEdgeInLoop;
+                var finishedLoop = false;
+                PolygonalFace nextFace = null;
+                do
+                {
+                    var intersectVertex2D = edgeDictionary[currentEdge];
+                    edgeDictionary.Remove(currentEdge);
+                    edgesInLoop.Add(currentEdge);
+                    path.Add(intersectVertex2D);
+                    var prevFace = nextFace;
+                    if (prevFace == null)
+                        nextFace = (currentEdge.From.Dot(normal) < distanceToOrigin) ? currentEdge.OtherFace : currentEdge.OwnedFace;
+                    else nextFace = (nextFace == currentEdge.OwnedFace) ? currentEdge.OtherFace : currentEdge.OwnedFace;
+                    Edge nextEdge = null;
+                    foreach (var whichEdge in nextFace.Edges)
+                    {
+                        if (currentEdge == whichEdge) continue;
+                        if (whichEdge == firstEdgeInLoop)
+                        {
+                            finishedLoop = true;
+                            if (path.Count > 2)
+                                AddToPolygons(path, edgesInLoop, polygons, e2VDictionary);
+                            break;
+                        }
+                        else if (edgeDictionary.ContainsKey(whichEdge))
+                        {
+                            nextEdge = whichEdge;
+                            break;
+                        }
+                    }
+                    if (!finishedLoop && nextEdge == null)
+                    {
+                        output("Incomplete loop.", 3);
+                        if (path.Count > 2)
+                            AddToPolygons(path, edgesInLoop, polygons, e2VDictionary);
+                        finishedLoop = true;
+                    }
+                    else currentEdge = nextEdge;
+                } while (!finishedLoop);
+            }
+            return polygons.CreateShallowPolygonTrees(false);
+        }
+        public static TVGL.VerbosityLevels Verbosity = TVGL.VerbosityLevels.OnlyCritical;
+
+        public static bool output(object message, int verbosityLimit = 0)
+        {
+            if ((verbosityLimit > (int)Verbosity)
+                || string.IsNullOrEmpty(message.ToString()))
+                return false;
+            Debug.WriteLine(message);
+            return true;
+        }
+        public static void AddToPolygons(List<Vector2> path, List<Edge> edgesInLoop, List<Polygon> polygons, Dictionary<Vertex2D, Edge> e2VDictionary)
+        {
+            var polygon = new Polygon(path);
+            polygons.Add(polygon);
+            for (int i = 0; i < polygon.Vertices.Count; i++)
+                e2VDictionary.Add(polygon.Vertices[i], edgesInLoop[i]);
+        }
+
+    }
 }

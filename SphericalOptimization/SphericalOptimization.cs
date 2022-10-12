@@ -119,7 +119,7 @@ namespace SphericalOptimization
                 if (otherRightTriaContaIndices.Item1 >= otherLeftTriaContaIndices.Item2)
                     icosaFacesToIgnore.Add(rightFaceIndex);
             }
-
+            //icosaFacesToIgnore.Clear();
             //third, complete barycentric nelder mead for icosahedron faces that are not in the ignore list
             var bestResults = new ConcurrentBag<(double, double[], int)>();
 #if RELEASE
