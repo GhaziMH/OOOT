@@ -889,9 +889,9 @@ namespace SphericalOptimizationTest
             (AllPolygonLayers[0], AllPolygonLayersFace[0]) = GetFirstLayer(ts, NumberOfLayers, maxRadius, ref sph, ref offset_value, ref t);
             Spheres[0] = sph;
 #if PARALLEL
-            Parallel.For(1, NumberOfLayers, i =>
+            Parallel.For(0, NumberOfLayers, i =>
 #else
-            for (int i = 1; i < NumberOfLayers; i++)
+            for (int i = 0; i < NumberOfLayers; i++)
 #endif
 
             {

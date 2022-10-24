@@ -4,11 +4,13 @@ using System.Diagnostics;
 using System.Linq;
 using OptimizationToolbox;
 using TVGL;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace SphericalOptimizationTest
 {
     internal class FirstLayer : IObjectiveFunction
     {
+        private int Case;
         private double thickness;
         private double LargestArea;
         private const double maxAngle = Math.PI * 3 / 4;
@@ -23,43 +25,62 @@ namespace SphericalOptimizationTest
         private static double denomProx = 1 + Math.Exp(-b);
 
 
-        public FirstLayer(TessellatedSolid tessellatedSolid, double thickness, double LargestArea)
+        public FirstLayer(TessellatedSolid tessellatedSolid, double thickness, double LargestArea, int Case = 0)
         {
             this.tessellatedSolid = tessellatedSolid;
             this.thickness = thickness;
             this.LargestArea = LargestArea;
+            this.Case = Case;
         }
 
         public double calculate(double[] x)
         {
             Vector3 d = new Vector3(x).Normalize();
-            //Console.WriteLine("Current Direction: " + ((decimal)d.X) + " , " + ((decimal)d.Y) + " , " + ((decimal)d.Z));
-            //Vector3 d = MakeUnitVectorFromSpherical(x[0], x[1]);
 
-            var w1 = 0.5; var w2 = 0.5; var w3 = 0.2;
-            var x2 = 0.0;
-            var test = GetFirstLayer(d);
-
-            //Presenter.ShowAndHang(test);
-            /*foreach (var face in tessellatedSolid.Faces)
+            if (Case == 1)
             {
-                var dot = d.Dot(face.Normal);
-                x2 += face.Area * StaircaseEffectScore(dot);
+                return SupportStructureScore(d, QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0]);
             }
-            */
-            var FirstLayer = FirstLayerScore(test, LargestArea);
-            //var x1 = SupportStructureScore(d, test);
-            var x1 = 0;
+            else if (Case == 2)
+            {
+                var X2 = 0.0;
+                
+                foreach (var face in tessellatedSolid.Faces)
+                {
+                    var dot = d.Dot(face.Normal.Normalize());
+                    X2 += face.Area * StaircaseEffectScore(dot);
+                }
+                return X2 / tessellatedSolid.Faces.Select(x => x.Area).Sum();
+            }
+            else if(Case == 3)
+            {
+                return FirstLayerScore(QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0], LargestArea);
+            }
+            else
+            {
+                //Console.WriteLine("Current Direction: " + ((decimal)d.X) + " , " + ((decimal)d.Y) + " , " + ((decimal)d.Z));
+                //Vector3 d = MakeUnitVectorFromSpherical(x[0], x[1]);
 
-            if (x1 < 0)
-                Console.WriteLine("negative support score");
-            if (FirstLayer < 0)
-                Console.WriteLine("negative first layer scroe");
-            double x3 = 0.0;
-            //double total = w1 * x1 + 1 * FirstLayer + w3 * x3;
-            //Console.WriteLine("Total Cost: " + ((decimal)total));
+                var w1 = 0.5; var w2 = 0.3; var w3 = 0.2;
+                var x2 = 0.0;
+                var firstLayer = QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0];
 
-            return FirstLayer;
+                //Presenter.ShowAndHang(test);
+                foreach (var face in tessellatedSolid.Faces)
+                {
+                    var dot = d.Dot(face.Normal);
+                    x2 += face.Area * StaircaseEffectScore(dot);
+                }
+                x2 /= tessellatedSolid.Faces.Select(x => x.Area).Sum();
+                var x1 = SupportStructureScore(d, firstLayer);
+
+                var x3 = FirstLayerScore(firstLayer, LargestArea);
+
+                double total = w1 * x1 + w2 * x2 + w3 * x3;
+                //Console.WriteLine("Total Cost: " + ((decimal)total));
+
+                return total;
+            }
         }
         private List<Polygon> GetFirstLayer(Vector3 direction, double offset = 1E-6)
         {
@@ -126,7 +147,7 @@ namespace SphericalOptimizationTest
 
             // return 1E-3 *tessellatedSolid.SurfaceArea / FirstLayer.Sum(x => x.Area);
             // update max score 0 and min score is almost 1
-            return 1 - FirstLayer.Select(x => x.Area).Sum() / maxArea;
+            return Math.Abs(1 - FirstLayer.Select(x => x.Area).Sum() / maxArea);
             /// Possible future improvments:
             /// 1. measure the first layer score based on printing cases:
             ///     A. Desirable case: 
@@ -141,7 +162,10 @@ namespace SphericalOptimizationTest
         }
         private double StaircaseEffectScore(double dot)
         {
-            return 1 - (Math.Exp(b * (Math.Abs(dot) - 1)) + Math.Exp(-b * Math.Abs(dot))) / denomProx;
+            double score = (Math.Exp(b * (Math.Abs(dot) - 1)) + Math.Exp(-b * Math.Abs(dot))) / denomProx;
+            if (score > 1)
+                score = 1;
+            return 1 - score;
         }
 
         private double SupportStructureScore(Vector3 d, List<Polygon> firstLayer, double currentBest = double.PositiveInfinity)
@@ -156,25 +180,9 @@ namespace SphericalOptimizationTest
             {
                 css_i[i] = SolidOriginal[i * 2];
             }
-            /*var verts = new List<List<Vector3>>();
-            for (int i = 0; i < SolidOriginal.Count(); i++) 
-            {
-                foreach(var j in SolidOriginal[i])
-                {
-                    var current_verts = new List<Vector3>();
-
-                    foreach (var v in j.Vertices)
-                    {
-                        current_verts.Add(new Vector3(v.X, v.Y, i * 0.5 * thickness));
-                    }
-                    verts.Add(current_verts);
-
-                }
-            }
-            Presenter.ShowVertexPaths(verts, null, 0.5);
-            Presenter.ShowAndHang(solid);*/
-            var Area = 0.0; // volumetric error  
-            var Area2 = 0.0; // printable region of layers
+            
+            var VolumetricError = 0.0; // volumetric error  
+            var PrintableVolume = 0.0; // printable region of layers
             for (int i = 1; i < css_i.Count(); i++)
             {
                 var temp_css = new List<Polygon>();
@@ -195,40 +203,21 @@ namespace SphericalOptimizationTest
                         }
                     }
                 }
-                Area2 += temp_css.Select(x => x.Area).Sum();
-                //if (Area2 > 0 & Area2 < currentBest)
-                //   return double.PositiveInfinity;
+                PrintableVolume += temp_css.Select(x => x.Area).Sum();
                 css_i[i] = temp_css;
 
                 if (i != css_i.Count() - 1)
                 {
-                    //Presenter.ShowAndHang(css_i[i]);
-                    //Presenter.ShowAndHang(SolidOriginal[(i*2)+1]);
-
                     var subrtractPoly = PolygonOperations.Subtract(css_i[i], SolidOriginal[(i * 2) + 1]);
-                    //if(subrtractPoly.Count()>0)
-                    {
-                        // Presenter.ShowAndHang(subrtractPoly);
-                    }
-                    Area += subrtractPoly.Sum(x => x.Area);
+                    VolumetricError += subrtractPoly.Sum(x => x.Area);
                 }
                 else if ((double)SolidOriginal.Count() / (double)css_i.Count() != 2)
-                    Area += SolidOriginal.Last().Sum(x => x.Area);
+                    VolumetricError += SolidOriginal.Last().Sum(x => x.Area);
 
             }
 
-            /*
-            var newcss = new List<CrossSectionSolid>();
-            var newcss2 = new List<Solid>();
-            for (int i = 0; i < css_i.Count(); i++)
-            {
-                newcss.Add(TVGL.CrossSectionSolid.CreateConstantCrossSectionSolid(d, i*thickness, thickness, css_i[i], 1e-10, UnitType.unspecified));
-                newcss2.Add(newcss[i].ConvertToTessellatedExtrusions(false, false));
-            }*/
-            //Presenter.ShowAndHang(newcss2);
-            return 1 - (Area2 * thickness / tessellatedSolid.Volume) + (Area * thickness);
-            //return Math.Pow(Area2 * thickness - tessellatedSolid.Volume, 2);
-            //return Math.Abs(Area2 * thickness - tessellatedSolid.Volume) / (Area2 * thickness + tessellatedSolid.Volume);
+           
+            return 1 - (PrintableVolume - VolumetricError) * thickness / tessellatedSolid.Volume;
         }
 
 
