@@ -1159,6 +1159,67 @@ namespace SphericalOptimizationTest
 
         }
 
+
+        public static List<List<(List<Vector3>, List<List<Vector3>>)>> ConverTo3DPolygonWithInnerPolygon(List<List<List<Vector3>>> sphSlices, Plane plane)
+        {
+            var PtTo2DPolygon = new List<List<(Polygon, int)>>();
+            var ConvertedPolygons = new List<List<(List<Vector3>, List<List<Vector3>>)>>();
+            sphSlices = sphSlices.Where(x => x != null && x.Count() > 0).ToList();
+            // Sort by area first
+            // test inside polyogn condition  
+            for (int i = 0; i < sphSlices.Count; i++)
+            {
+                var TempIndex = new List<(int, List<int>)>();
+                var CurrentPoly = new List<(Polygon, int)>();
+                if (sphSlices[i].Count > 1)
+                {
+                    for (int j = 0; j < sphSlices[i].Count; j++)
+                        CurrentPoly.Add((new Polygon(MiscFunctions.ProjectTo2DCoordinates(sphSlices[i][j], plane.Normal, out _)), j));
+                    CurrentPoly = CurrentPoly.OrderByDescending(x => x.Item1.Area).ToList();
+
+                    var id = new List<int>();
+                    while (CurrentPoly.Count > 0)
+                    {
+                        var TempPoly = CurrentPoly[0];
+                        CurrentPoly.RemoveAt(0);
+
+
+                        for (int j = 0; j < CurrentPoly.Count; j++)
+                        {
+                            if (!id.Contains(CurrentPoly[j].Item2) &&
+                                TempPoly.Item1.GetPolygonInteraction(CurrentPoly[j].Item1).Relationship
+                                == PolygonRelationship.BInsideA)
+                            {
+                                id.Add(CurrentPoly[j].Item2);
+                            }
+
+                        }
+                        if (!id.Contains(TempPoly.Item2))
+                            TempIndex.Add((TempPoly.Item2, id));
+                    }
+                    var PolygonwithHoles = new List<(List<Vector3>, List<List<Vector3>>)>();
+                    foreach (var index in TempIndex)
+                    {
+                        var innerPoly = new List<List<Vector3>>();
+                        foreach (var ids in index.Item2)
+                            innerPoly.Add(sphSlices[i][ids]);
+                        PolygonwithHoles.Add((sphSlices[i][index.Item1], innerPoly));
+                    }
+                    if (PolygonwithHoles.Count > 0)
+                        ConvertedPolygons.Add(PolygonwithHoles);
+                }
+
+                else if (sphSlices.Count == 1)
+                {
+                    var innerPoly = new List<List<Vector3>>();
+
+                    ConvertedPolygons.Add(new List<(List<Vector3>, List<List<Vector3>>)> { (sphSlices[i][0], innerPoly) });
+                }
+            }
+            return ConvertedPolygons;
+        }
+
+
         #endregion
 
         #region MiscFunctions

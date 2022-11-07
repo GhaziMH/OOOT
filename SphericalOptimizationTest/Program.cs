@@ -8,24 +8,23 @@ using System.Collections.Generic;
 using System.IO;
 using CsvHelper;
 using System.Threading.Tasks;
-using System.Reflection.Metadata;
-using HelixToolkit.SharpDX.Core.Utilities;
+using SphericalOptimizationTest;
 
 namespace SphericalOptimization
 {
     class Program
     {
-        static bool showPlot = true;
-        static bool runobj = true;
-        static bool runMultiObj = false;
+        static bool showPlot = false;
+        static bool runobj = false;
+        static bool runMultiObj = true;
         [STAThread]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2252:This API requires opting into preview features", Justification = "<Pending>")]
+
         static void Main(string[] args)
         {
             //Parameters.Verbosity = OptimizationToolbox.VerbosityLevels.Everything;
             // this next line is to set the Debug statements from OOOT to the Console.
             //Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
-            double maxAngle = Math.PI * 3 / 4;
+
             var f_values = new List<double>();
             var dir_x = new List<double>();
             var dir_y = new List<double>();
@@ -44,15 +43,17 @@ namespace SphericalOptimization
 
             var Data = new List<SaveData>();
             var Timing = new List<TimeSpan>();
-            for (int i = 23; i < counter; i++)
+            for (int i = 3; i < counter; i++)
             {
 
                 TVGL.IO.Open(filename[i].FullName, out TessellatedSolid ts);
                 Console.WriteLine("Current File " + (i + 1) + "/" + counter);
-                Presenter.ShowAndHang(ts);
-                var angle = 0.1 * Math.PI;
-                //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(angle, -2 * angle, +3 * angle));
-                Presenter.ShowAndHang(ts);
+                //Presenter.ShowAndHang(ts);
+                var angle1 = 0.1 * Math.PI;
+                var angle2 = -2 * angle1;
+                var angle3 = 3 * angle1;
+                //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(0, Math.PI*.5, 0));
+                //Presenter.ShowAndHang(ts);
                 double R = 0.0;
                 foreach (var v in ts.Vertices)
                 {
@@ -74,7 +75,8 @@ namespace SphericalOptimization
 
                 foreach (var currentDir in CH_Normals)
                 {
-                    var currenttestingLayer = SphericalOptimizationTest.QuadricSlicer.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
+                    var currenttestingLayer = Loops.GetFirstLayer(ts, thickness, currentDir).Select(x => x.Area).Sum();
+                    //var currenttestingLayer = SphericalOptimizationTest.QuadricSlicer.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
                     if (LargestArea < currenttestingLayer)
                     {
                         LargestArea = currenttestingLayer;
@@ -163,6 +165,8 @@ namespace SphericalOptimization
                         //foreach (var v in optMethod.sortedBest.Values)
                         //   g.Add(f1limitConstraint.calculate(v));
 
+                        var v = new Vector3(optMethod.sortedBest.Values[0]).Transform(
+                            Matrix4x4.CreateFromYawPitchRoll(-angle1, -angle2, 0));
 
                         //dir_x.Add(xStar.)
                         Duration.Stop();
@@ -174,6 +178,7 @@ namespace SphericalOptimization
                         Console.WriteLine("F* = " + optMethod.sortedBest.Keys[0], 1);
                         Console.WriteLine("NumEvals = " + optMethod.numEvals);
                         Console.WriteLine("RunTime = " + Duration.Elapsed);
+                        //Console.WriteLine("X* (original orientation) = " + v);
                         Console.WriteLine("#######################################################");
                         //* Since there is no randomness in the process, you should get the following
                         // * response:
@@ -203,7 +208,7 @@ namespace SphericalOptimization
                         }
 
                         if (showPlot)
-                        {
+                        {/*
                             Vector3 d = new Vector3(optMethod.sortedBest.Values[0]);
                             if (TVGL.EqualityExtensions.IsNegligible(d.Dot(Vector3.UnitZ), 1E-4))
                             {
@@ -219,9 +224,22 @@ namespace SphericalOptimization
                             ts.Transform(Matrix4x4.CreateRotationX(anglex));
                             ts.Transform(Matrix4x4.CreateRotationY(angley));
                             ts.Transform(new Matrix4x4(Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, new Vector3(-ts.XMin, -ts.YMin, -ts.ZMin)));
-
+                            */
+                            //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(-angle1, -angle2, 0));
+                            var Xstar = new Vector3(optMethod.sortedBest.Values[0]);
+                            var minV = 0.0; var maxV = 0.0;
+                            foreach (var vert in ts.Vertices)
+                            {
+                                var Dot = vert.Dot(Xstar);
+                                if(Dot>maxV)
+                                    maxV= Dot;
+                                if(Dot<minV)
+                                    minV= Dot;
+                            }
+                            var listVect = new List<Vector3> { Xstar * minV, Xstar * (maxV+100) };
+                            Presenter.ShowVertexPathsWithSolids(listVect, new[] { ts });
                             PlotMixedSlices(ts, thickness, new Vector3(optMethod.sortedBest.Values[0]));
-                            PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness);
+                            //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness);
                         }
 
                         #endregion
@@ -233,9 +251,10 @@ namespace SphericalOptimization
                     {
                         for(int k = 0; k < 4; k++)
                         {
+                            var DataCSV = new List<HeatmapData>();
                             var Duration = new Stopwatch();
                             Duration.Start();
-                            var map = new double[20, 40];
+                            var map = new double[21, 41];
                             var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea, k); // obj fun
 #if RELEASE
                             Parallel.For(0, map.GetLength(0), iTheta =>
@@ -243,14 +262,16 @@ namespace SphericalOptimization
                             for (int iTheta = 0; iTheta < map.GetLength(0); iTheta++)
 #endif
                             {
-                                var theta = iTheta * (Math.PI / map.GetLength(0));
+                                
+                                var theta = iTheta * (Math.PI / (map.GetLength(0)-1));
                                 for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
                                 {
-                                    var phi = iPhi * (2 * Math.PI / map.GetLength(1));
+                                    var phi = iPhi * (2 * Math.PI / (map.GetLength(1)-1));
                                     var x = Math.Sin(theta) * Math.Cos(phi);
                                     var y = Math.Sin(theta) * Math.Sin(phi);
                                     var z = Math.Cos(theta);
                                     map[iTheta, iPhi] = objfn.calculate(new[] { x, y, z });
+                                    //DataCSV.Add(new HeatmapData { Theta= theta, Phi = phi, OptValue = map[iTheta, iPhi] });
                                 }
                             }
 #if RELEASE 
@@ -264,9 +285,10 @@ namespace SphericalOptimization
                             Console.WriteLine("RunTime = " + Duration.Elapsed);
                             Console.WriteLine("#######################################################");
 
-                            using (var writer = new StreamWriter(DirData + "File"+i+" objfn X" + k + ".CSV")) 
+                            using (var writer = new StreamWriter(DirData + "newX2File"+i+ filename[i].Name+" objfn X" + k + ".CSV")) 
                             //using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
                             {
+                                //csv.WriteRecords(DataCSV);
                                 for (int iRow = 0; iRow < map.GetLength(0); iRow++)
                                     writer.WriteLine(string.Join(',', map.GetRow(iRow)));
                             }
@@ -277,15 +299,15 @@ namespace SphericalOptimization
                     {
                         var Duration = new Stopwatch();
                         Duration.Start();
-                        var map = new double[180, 360];
+                        var map = new double[21, 41];
                         var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea); // obj fun
                         Parallel.For(0, map.GetLength(0), iTheta =>
                         {
-                            var theta = iTheta * (Math.PI / map.GetLength(0));
+                            var theta = iTheta * (Math.PI / (map.GetLength(0) - 1));
 
                             for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
                             {
-                                var phi = iPhi * (2 * Math.PI / map.GetLength(1));
+                                var phi = iPhi * (2 * Math.PI / (map.GetLength(1)-1));
                                 var x = Math.Sin(theta) * Math.Cos(phi);
                                 var y = Math.Sin(theta) * Math.Sin(phi);
                                 var z = Math.Cos(theta);
@@ -367,7 +389,7 @@ namespace SphericalOptimization
         {
             d = d.Normalize();
             
-            var PlanarSlices = ts.GetUniformlySpacedCrossSections(Vector3.UnitZ, double.NaN, -1, thickness).ToList();
+            var PlanarSlices = TVGL.Slice.GetUniformlySpacedCrossSections(ts,Vector3.UnitZ, double.NaN, -1, thickness).ToList();
 
             var Slices = new List<List<List<Vector3>>>();
             for(int i = 0; i < 5; i++)
@@ -447,6 +469,13 @@ namespace SphericalOptimization
             public double Z { set; get; }
             public TimeSpan RunTime_sec { set; get; }
             public double objf { set; get; }
+        }
+
+        public class HeatmapData
+        {
+            public double Theta { set; get; }
+            public double Phi { set; get; }
+            public double OptValue { set; get; }
         }
 
         static DirectoryInfo FindParentDirectory(string targetFolder)
