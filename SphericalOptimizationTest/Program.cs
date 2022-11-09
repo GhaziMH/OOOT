@@ -15,8 +15,8 @@ namespace SphericalOptimization
     class Program
     {
         static bool showPlot = false;
-        static bool runobj = false;
-        static bool runMultiObj = true;
+        static bool runobj = true;
+        static bool runMultiObj = false;
         [STAThread]
 
         static void Main(string[] args)
@@ -31,7 +31,7 @@ namespace SphericalOptimization
             var dir_z = new List<double>();
             var filename = FindParentDirectory("TestFiles").GetFiles("*").ToList();
             string DirData = Directory.GetParent(Directory.GetParent(filename[0].FullName).FullName).FullName + "\\Data\\";
-            
+
 
             //var filename = Directory.GetFiles(@"C:\Users\galon\source\repos\OOOT\TestFiles", "*.stl",
             //    SearchOption.AllDirectories).ToList();
@@ -39,176 +39,188 @@ namespace SphericalOptimization
             int counter = filename.Count;
             //for(int i = 0; i < counter-2; i++)
             //   AllFiles.RemoveAt(0);
-            
 
+            var angle = new List<double> { 0, 0.15,0.256 };
             var Data = new List<SaveData>();
-            var Timing = new List<TimeSpan>();
-            for (int i = 3; i < counter; i++)
+            var LoopSwitch = true;
+
+            while (LoopSwitch)
             {
+                
+                var Timing = new List<TimeSpan>();
+                foreach (var anglei in angle)
+                {
 
-                TVGL.IO.Open(filename[i].FullName, out TessellatedSolid ts);
-                Console.WriteLine("Current File " + (i + 1) + "/" + counter);
-                //Presenter.ShowAndHang(ts);
-                var angle1 = 0.1 * Math.PI;
-                var angle2 = -2 * angle1;
-                var angle3 = 3 * angle1;
-                //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(0, Math.PI*.5, 0));
-                //Presenter.ShowAndHang(ts);
-                double R = 0.0;
-                foreach (var v in ts.Vertices)
-                {
-                    double DistSq = Math.Abs(ts.Center.DistanceSquared(v.Coordinates));
-                    if (DistSq > R)
-                        R = DistSq;
-                }
-                double minHeight = (Math.Sqrt(R)) * 0.2;
-                double thickness = minHeight * 0.1;
-                var LargestArea = 0.0;
-                var DirLargestArea = Vector3.Zero;
-                var CH_Normals = ts.ConvexHull.Faces.Select(x => x.Normal).ToHashSet();
-                CH_Normals.Add(Vector3.UnitX);
-                CH_Normals.Add(Vector3.UnitY);
-                CH_Normals.Add(Vector3.UnitZ);
-                CH_Normals.Add(-1 * Vector3.UnitX);
-                CH_Normals.Add(-1 * Vector3.UnitY);
-                CH_Normals.Add(-1 * Vector3.UnitZ);
 
-                foreach (var currentDir in CH_Normals)
-                {
-                    var currenttestingLayer = Loops.GetFirstLayer(ts, thickness, currentDir).Select(x => x.Area).Sum();
-                    //var currenttestingLayer = SphericalOptimizationTest.QuadricSlicer.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
-                    if (LargestArea < currenttestingLayer)
+                    for (int i = 0; i < counter; i++)
                     {
-                        LargestArea = currenttestingLayer;
-                        DirLargestArea = currentDir;
-                    }
-                }
-                if (runobj)
-                {
-                    if (runMultiObj)
-                    {
-                        for (int j = 0; j < 4; j++)
+                        Data = new List<SaveData>();
+
+                        TVGL.IO.Open(filename[i].FullName, out TessellatedSolid ts);
+                        Console.WriteLine("Current File " + (i + 1) + "/" + counter);
+                        //Presenter.ShowAndHang(ts);
+                        var angle1 = 0.1 * Math.PI;
+                        var angle2 = -2 * angle1;
+                        var angle3 = 3 * angle1;
+                        ts.Transform(Matrix4x4.CreateRotationY(anglei * Math.PI));
+                        ts.Transform(Matrix4x4.CreateRotationX(0.25 * anglei * Math.PI));
+                        //Presenter.ShowAndHang(ts);
+                        double R = 0.0;
+                        foreach (var v in ts.Vertices)
                         {
-                            var Duration = new Stopwatch();
-                            Duration.Start();
-                            var optMethod = new SphericalOptimization();
-                            optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea, j)); // obj fun
-                            optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
-                            double[] xInit = new[] { 0.0, 0.0 };//,100};
-                            var fStar = optMethod.Run(out var xStar, xInit);
+                            double DistSq = Math.Abs(ts.Center.DistanceSquared(v.Coordinates));
+                            if (DistSq > R)
+                                R = DistSq;
+                        }
+                        double minHeight = (Math.Sqrt(R)) * 0.2;
+                        double thickness = minHeight * 0.1;
+                        var LargestArea = 0.0;
+                        var DirLargestArea = Vector3.Zero;
+                        var CH_Normals = ts.ConvexHull.Faces.Select(x => x.Normal).ToHashSet();
+                        CH_Normals.Add(Vector3.UnitX);
+                        CH_Normals.Add(Vector3.UnitY);
+                        CH_Normals.Add(Vector3.UnitZ);
+                        CH_Normals.Add(-1 * Vector3.UnitX);
+                        CH_Normals.Add(-1 * Vector3.UnitY);
+                        CH_Normals.Add(-1 * Vector3.UnitZ);
 
-                            Duration.Stop(); 
-                            Console.WriteLine("Current file name: " + filename[i].Name);
-                            Console.WriteLine("Current file " + (i + 1) + " / " + counter);
-                            Console.WriteLine("optimizing..., X" + j);
-                            Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
-                            Console.WriteLine("X* = " + optMethod.sortedBest.Values[0].MakePrintString());
-                            Console.WriteLine("F* = " + optMethod.sortedBest.Keys[0], 1);
-                            Console.WriteLine("NumEvals = " + optMethod.numEvals);
-                            Console.WriteLine("RunTime = " + Duration.Elapsed);
-                            Console.WriteLine("#######################################################");
-
-                            for (int k = 0; k < optMethod.sortedBest.Count; k++)
+                        foreach (var currentDir in CH_Normals)
+                        {
+                            //var currenttestingLayer = Loops.GetFirstLayer(ts, thickness, currentDir).Select(x => x.Area).Sum();
+                            var currenttestingLayer = SphericalOptimizationTest.QuadricSlicer.GetUniformlySpacedCrossSections(ts, currentDir, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
+                            if (LargestArea < currenttestingLayer)
                             {
-                                Data.Add(new SaveData
-                                {
-                                    Filename = filename[i].Name,
-                                    Best = (k + 1).ToString(),
-                                    Function = optMethod.sortedBest.Keys[k],
-                                    NumEvals = (int)optMethod.numEvals,
-                                    X = optMethod.sortedBest.Values[k][0],
-                                    Y = optMethod.sortedBest.Values[k][1],
-                                    Z = optMethod.sortedBest.Values[k][2],
-                                    RunTime_sec = Duration.Elapsed,
-                                    objf = j
-                                });
+                                LargestArea = currenttestingLayer;
+                                DirLargestArea = currentDir;
                             }
-
                         }
-                        using (var writer = new StreamWriter(DirData  +"obj X0_4 "+ filename[i].Name+ ".CSV"))
-                        using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                        if (runobj)
                         {
-                            csv.WriteRecords(Data);
-                        }
-
-
-
-                    }
-                    else
-                    {
-                        #region SphericalOptimization
-                        var Duration = new Stopwatch();
-                        Duration.Start();
-                        var optMethod = new SphericalOptimization();
-
-                        //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationY(1.5));
-                        //ts.Transform(TVGL.Numerics.Matrix4x4.CreateRotationZ(1.25));
-                        optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea)); // obj fun
-                        optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
-
-                        // Let us start the search from a specific point. 
-                        double[] xInit = new[] { 0.0, 0.0 };//,100};
-                        var fStar = optMethod.Run(out var xStar, xInit);
-                        //* output is provided from the optimization. Since the optMethod is an object
-                        // * we can probe it following the run to get at important data like how the 
-                        //* process converged. 
-
-
-                        //optMethod = new SphericalOptimization();
-                        //optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea));
-                        //var f1limitConstraint = new SphericalOptimizationTest.MaxVolumeInequality(ts, thickness, LargestArea, fStar * 1.1);
-                        //optMethod.Add(f1limitConstraint);
-                        //optMethod.Add(new squaredExteriorPenalty(optMethod, 10.0));
-                        //optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
-                        //var fStar2 = optMethod.Run(out var xStar2, xInit);
-                        //var g = new List<double>();
-                        //foreach (var v in optMethod.sortedBest.Values)
-                        //   g.Add(f1limitConstraint.calculate(v));
-
-                        var v = new Vector3(optMethod.sortedBest.Values[0]).Transform(
-                            Matrix4x4.CreateFromYawPitchRoll(-angle1, -angle2, 0));
-
-                        //dir_x.Add(xStar.)
-                        Duration.Stop();
-                        Console.WriteLine("Current file name: " + filename[i].Name);
-                        Console.WriteLine("Current file " + (i + 1) + " / " + counter);
-                        Console.WriteLine("optimizing...");
-                        Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
-                        Console.WriteLine("X* = " + optMethod.sortedBest.Values[0].MakePrintString());
-                        Console.WriteLine("F* = " + optMethod.sortedBest.Keys[0], 1);
-                        Console.WriteLine("NumEvals = " + optMethod.numEvals);
-                        Console.WriteLine("RunTime = " + Duration.Elapsed);
-                        //Console.WriteLine("X* (original orientation) = " + v);
-                        Console.WriteLine("#######################################################");
-                        //* Since there is no randomness in the process, you should get the following
-                        // * response:
-                        // * No inequalities specified.
-                        // * Convergence Declared by ToKnownBestFConvergence
-                        // * X* = {   1.079   ,  1.159    }
-                        // * F* = 0.00772036716239199
-                        // * NumEvals = 245
-                        //
-
-                        //var CurrentData = new List<SaveData>();
-                        for (int j = 0; j < optMethod.sortedBest.Count; j++)
-                        {
-                            Data.Add(new SaveData
+                            if (runMultiObj)
                             {
-                                Filename = filename[i].Name,
-                                Best = (j + 1).ToString(),
-                                Function = optMethod.sortedBest.Keys[j],
-                                NumEvals = (int)optMethod.numEvals,
-                                X = optMethod.sortedBest.Values[j][0],
-                                Y = optMethod.sortedBest.Values[j][1],
-                                Z = optMethod.sortedBest.Values[j][2],
-                                RunTime_sec = Duration.Elapsed,
-                                //g1 = g[j]
+                                for (int j = 0; j < 4; j++)
+                                {
+                                    var Duration = new Stopwatch();
+                                    Duration.Start();
+                                    var optMethod = new SphericalOptimization();
+                                    optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea, j)); // obj fun
+                                    optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
+                                    double[] xInit = new[] { 0.0, 0.0 };//,100};
+                                    var fStar = optMethod.Run(out var xStar, xInit);
 
-                            });
-                        }
+                                    Duration.Stop();
+                                    Console.WriteLine("Current file name: " + filename[i].Name);
+                                    Console.WriteLine("Current file " + (i + 1) + " / " + counter);
+                                    Console.WriteLine("optimizing..., X" + j);
+                                    Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
+                                    Console.WriteLine("X* = " + optMethod.sortedBest.Values[0].MakePrintString());
+                                    Console.WriteLine("F* = " + optMethod.sortedBest.Keys[0], 1);
+                                    Console.WriteLine("NumEvals = " + optMethod.numEvals);
+                                    Console.WriteLine("RunTime = " + Duration.Elapsed);
+                                    Console.WriteLine("#######################################################");
 
-                        if (showPlot)
-                        {/*
+                                    for (int k = 0; k < optMethod.sortedBest.Count; k++)
+                                    {
+                                        Data.Add(new SaveData
+                                        {
+                                            Filename = filename[i].Name,
+                                            Best = (k + 1).ToString(),
+                                            Function = optMethod.sortedBest.Keys[k],
+                                            NumEvals = (int)optMethod.numEvals,
+                                            X = optMethod.sortedBest.Values[k][0],
+                                            Y = optMethod.sortedBest.Values[k][1],
+                                            Z = optMethod.sortedBest.Values[k][2],
+                                            RunTime_sec = Duration.Elapsed,
+                                            objf = j
+                                        });
+                                    }
+
+                                }
+                                using (var writer = new StreamWriter(DirData + "obj X0_4 " + filename[i].Name + anglei + ".CSV"))
+                                using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                                {
+                                    csv.WriteRecords(Data);
+                                }
+
+
+
+                            }
+                            else
+                            {
+                                #region SphericalOptimization
+                                var Duration = new Stopwatch();
+                                Duration.Start();
+                                var optMethod = new SphericalOptimization();
+
+                                optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea)); // obj fun
+                                optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
+
+                                // Let us start the search from a specific point. 
+                                double[] xInit = new[] { 0.0, 0.0 };//,100};
+                                var fStar = optMethod.Run(out var xStar, xInit);
+                                //* output is provided from the optimization. Since the optMethod is an object
+                                // * we can probe it following the run to get at important data like how the 
+                                //* process converged. 
+
+
+                                //optMethod = new SphericalOptimization();
+                                //optMethod.Add(new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea));
+                                //var f1limitConstraint = new SphericalOptimizationTest.MaxVolumeInequality(ts, thickness, LargestArea, fStar * 1.1);
+                                //optMethod.Add(f1limitConstraint);
+                                //optMethod.Add(new squaredExteriorPenalty(optMethod, 10.0));
+                                //optMethod.Add(new MaxSpanInPopulationConvergence(1e-3));
+                                //var fStar2 = optMethod.Run(out var xStar2, xInit);
+                                //var g = new List<double>();
+                                //foreach (var v in optMethod.sortedBest.Values)
+                                //   g.Add(f1limitConstraint.calculate(v));
+
+
+
+                                //dir_x.Add(xStar.)
+                                Duration.Stop();
+                                Console.WriteLine("Current file name: " + filename[i].Name);
+                                Console.WriteLine("Current file " + (i + 1) + " / " + counter);
+                                Console.WriteLine("Current angle: " + anglei + "*pi");
+                                Console.WriteLine("optimizing...");
+                                Console.WriteLine("Convergence Declared by " + optMethod.ConvergenceDeclaredByTypeString);
+                                Console.WriteLine("X* = " + optMethod.sortedBest.Values[0].MakePrintString());
+                                Console.WriteLine("F* = " + optMethod.sortedBest.Keys[0], 1);
+                                Console.WriteLine("NumEvals = " + optMethod.numEvals);
+                                Console.WriteLine("RunTime = " + Duration.Elapsed);
+                                Console.WriteLine("#######################################################");
+                                //* Since there is no randomness in the process, you should get the following
+                                // * response:
+                                // * No inequalities specified.
+                                // * Convergence Declared by ToKnownBestFConvergence
+                                // * X* = {   1.079   ,  1.159    }
+                                // * F* = 0.00772036716239199
+                                // * NumEvals = 245
+                                //
+
+                                //var CurrentData = new List<SaveData>();
+                                for (int j = 0; j < optMethod.sortedBest.Count; j++)
+                                {
+                                    Data.Add(new SaveData
+                                    {
+                                        Filename = filename[i].Name,
+                                        Best = (j + 1).ToString(),
+                                        Function = optMethod.sortedBest.Keys[j],
+                                        NumEvals = (int)optMethod.numEvals,
+                                        X = optMethod.sortedBest.Values[j][0],
+                                        Y = optMethod.sortedBest.Values[j][1],
+                                        Z = optMethod.sortedBest.Values[j][2],
+                                        RunTime_sec = Duration.Elapsed,
+                                        objf = 0
+                                    });
+                                }
+                                using (var writer = new StreamWriter(DirData + filename[i].Name + "objfun X0 angle " + anglei + ".CSV"))
+                                using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                                {
+                                    csv.WriteRecords(Data);
+                                }
+
+                                if (showPlot)
+                                {/*
                             Vector3 d = new Vector3(optMethod.sortedBest.Values[0]);
                             if (TVGL.EqualityExtensions.IsNegligible(d.Dot(Vector3.UnitZ), 1E-4))
                             {
@@ -225,163 +237,176 @@ namespace SphericalOptimization
                             ts.Transform(Matrix4x4.CreateRotationY(angley));
                             ts.Transform(new Matrix4x4(Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ, new Vector3(-ts.XMin, -ts.YMin, -ts.ZMin)));
                             */
-                            //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(-angle1, -angle2, 0));
-                            var Xstar = new Vector3(optMethod.sortedBest.Values[0]);
-                            var minV = 0.0; var maxV = 0.0;
-                            foreach (var vert in ts.Vertices)
-                            {
-                                var Dot = vert.Dot(Xstar);
-                                if(Dot>maxV)
-                                    maxV= Dot;
-                                if(Dot<minV)
-                                    minV= Dot;
-                            }
-                            var listVect = new List<Vector3> { Xstar * minV, Xstar * (maxV+100) };
-                            Presenter.ShowVertexPathsWithSolids(listVect, new[] { ts });
-                            PlotMixedSlices(ts, thickness, new Vector3(optMethod.sortedBest.Values[0]));
-                            //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness);
-                        }
+                                    //ts.Transform(Matrix4x4.CreateFromYawPitchRoll(-angle1, -angle2, 0));
+                                    var Xstar = new Vector3(optMethod.sortedBest.Values[0]);
+                                    var minV = 0.0; var maxV = 0.0;
+                                    foreach (var vert in ts.Vertices)
+                                    {
+                                        var Dot = vert.Dot(Xstar);
+                                        if (Dot > maxV)
+                                            maxV = Dot;
+                                        if (Dot < minV)
+                                            minV = Dot;
+                                    }
+                                    var listVect = new List<Vector3> { Xstar * minV, Xstar * (maxV + 100) };
+                                    Presenter.ShowVertexPathsWithSolids(listVect, new[] { ts });
+                                    PlotMixedSlices(ts, thickness, new Vector3(optMethod.sortedBest.Values[0]));
+                                    //PlotDirections(optMethod.sortedBest.Keys, optMethod.sortedBest.Values, ts, thickness);
+                                }
 
-                        #endregion
-                    }
-                }
-                else
-                {
-                    if (runMultiObj)
-                    {
-                        for(int k = 0; k < 4; k++)
+                                #endregion
+                            }
+                        }
+                        else
                         {
-                            var DataCSV = new List<HeatmapData>();
-                            var Duration = new Stopwatch();
-                            Duration.Start();
-                            var map = new double[21, 41];
-                            var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea, k); // obj fun
+                            if (runMultiObj)
+                            {
+                                for (int k = 1; k < 2; k++)
+                                {
+                                    var DataCSV = new List<HeatmapData>();
+                                    var Duration = new Stopwatch();
+                                    Duration.Start();
+                                    var map = new double[46, 91];
+                                    var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea, k); // obj fun
 #if RELEASE
-                            Parallel.For(0, map.GetLength(0), iTheta =>
+                                    Parallel.For(0, map.GetLength(0), iTheta =>
 #else
                             for (int iTheta = 0; iTheta < map.GetLength(0); iTheta++)
 #endif
+                                    {
+
+                                        var theta = iTheta * (Math.PI / (map.GetLength(0) - 1));
+                                        for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
+                                        {
+                                            var phi = iPhi * (2 * Math.PI / (map.GetLength(1) - 1));
+                                            var x = Math.Sin(theta) * Math.Cos(phi);
+                                            var y = Math.Sin(theta) * Math.Sin(phi);
+                                            var z = Math.Cos(theta);
+                                            map[iTheta, iPhi] = objfn.calculate(new[] { x, y, z });
+                                            //DataCSV.Add(new HeatmapData { Theta= theta, Phi = phi, OptValue = map[iTheta, iPhi] });
+                                        }
+                                    }
+#if RELEASE
+                                    );
+#endif
+                                    Duration.Stop();
+                                    Timing.Add(Duration.Elapsed);
+                                    Console.WriteLine("Current file name: " + filename[i].Name);
+                                    Console.WriteLine("Current file " + (i + 1) + " / " + counter);
+                                    Console.WriteLine("Current angle: " + anglei + "*pi");
+                                    Console.WriteLine("optimizing..., X" + k);
+                                    Console.WriteLine("RunTime = " + Duration.Elapsed);
+                                    Console.WriteLine("#######################################################");
+
+                                    using (var writer = new StreamWriter(DirData + "newXFile" + i + filename[i].Name + " objfn X" + k + anglei + ".CSV"))
+                                    //using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                                    {
+                                        //csv.WriteRecords(DataCSV);
+                                        for (int iRow = 0; iRow < map.GetLength(0); iRow++)
+                                            writer.WriteLine(string.Join(',', map.GetRow(iRow)));
+                                    }
+                                }
+
+                            }
+                            else
                             {
-                                
-                                var theta = iTheta * (Math.PI / (map.GetLength(0)-1));
-                                for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
+                                var Duration = new Stopwatch();
+                                Duration.Start();
+                                var map = new double[21, 41];
+                                var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea); // obj fun
+                                Parallel.For(0, map.GetLength(0), iTheta =>
                                 {
-                                    var phi = iPhi * (2 * Math.PI / (map.GetLength(1)-1));
-                                    var x = Math.Sin(theta) * Math.Cos(phi);
-                                    var y = Math.Sin(theta) * Math.Sin(phi);
-                                    var z = Math.Cos(theta);
-                                    map[iTheta, iPhi] = objfn.calculate(new[] { x, y, z });
-                                    //DataCSV.Add(new HeatmapData { Theta= theta, Phi = phi, OptValue = map[iTheta, iPhi] });
+                                    var theta = iTheta * (Math.PI / (map.GetLength(0) - 1));
+
+                                    for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
+                                    {
+                                        var phi = iPhi * (2 * Math.PI / (map.GetLength(1) - 1));
+                                        var x = Math.Sin(theta) * Math.Cos(phi);
+                                        var y = Math.Sin(theta) * Math.Sin(phi);
+                                        var z = Math.Cos(theta);
+                                        map[iTheta, iPhi] = objfn.calculate(new[] { x, y, z });
+                                    }
+                                }
+                                            );
+
+                                Duration.Stop();
+                                Console.WriteLine("RunTime = " + Duration.Elapsed);
+                                Timing.Add(Duration.Elapsed);
+                                using (var writer = new StreamWriter(DirData + "180x360" + (i + 1) + "objfn.CSV"))
+                                //using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                                {
+                                    for (int iRow = 0; iRow < map.GetLength(0); iRow++)
+                                        writer.WriteLine(string.Join(',', map.GetRow(iRow)));
                                 }
                             }
-#if RELEASE 
-                            );
-#endif
-                            Duration.Stop();
-                            Timing.Add(Duration.Elapsed);
-                            Console.WriteLine("Current file name: " + filename[i].Name);
-                            Console.WriteLine("Current file " + (i + 1) + " / " + counter);
-                            Console.WriteLine("optimizing..., X" + k);
-                            Console.WriteLine("RunTime = " + Duration.Elapsed);
-                            Console.WriteLine("#######################################################");
+                        }
+                    }
+                    #region Save Files, RunTime
+                    /*
+                    if (runobj)
+                    {
 
-                            using (var writer = new StreamWriter(DirData + "newX2File"+i+ filename[i].Name+" objfn X" + k + ".CSV")) 
-                            //using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+
+                        var n = Directory.GetFiles(@DirData, "*",
+                            SearchOption.AllDirectories).Length;
+                        string f;
+                        if (n == 0)
+                            f = "TestFile_001";
+                        else
+                        {
+                            n++; n++;
+                            if (n < 10)
+                                f = "TestFile_00" + n;
+                            else if (n < 100)
+                                f = "TestFile_0" + n;
+                            else
+                                f = "TestFile_" + n;
+                        }
+                        int index = -1;
+                        for (int i = 0; i < Data.Count; i++)
+                        {
+                            if (Data[i].Best == "1")
                             {
-                                //csv.WriteRecords(DataCSV);
-                                for (int iRow = 0; iRow < map.GetLength(0); iRow++)
-                                    writer.WriteLine(string.Join(',', map.GetRow(iRow)));
+                                index++;
+                                TVGL.IO.Open(filename[index].FullName, out TessellatedSolid ts);
+                                double R = 0.0;
+                                foreach (var v in ts.Vertices)
+                                {
+                                    double DistSq = Math.Abs(ts.Center.DistanceSquared(v.Coordinates));
+                                    if (DistSq > R)
+                                        R = DistSq;
+                                }
+                                double minHeight = (Math.Sqrt(R)) * 0.2;
+                                double thickness = minHeight * 0.1;
+                                if (showPlot)
+                                    PlotMixedSlices(ts, thickness, new Vector3(Data[i].X, Data[i].Y, Data[i].Z));
                             }
                         }
-                        
+
+                        using (var writer = new StreamWriter(DirData + f + ".CSV"))
+                        using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+                        {
+                            csv.WriteRecords(Data);
+                        }
                     }
                     else
                     {
-                        var Duration = new Stopwatch();
-                        Duration.Start();
-                        var map = new double[21, 41];
-                        var objfn = new SphericalOptimizationTest.FirstLayer(ts, thickness, LargestArea); // obj fun
-                        Parallel.For(0, map.GetLength(0), iTheta =>
+                        using (var writer = new StreamWriter(DirData + "Timing2.CSV"))
+                        using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
                         {
-                            var theta = iTheta * (Math.PI / (map.GetLength(0) - 1));
-
-                            for (int iPhi = 0; iPhi < map.GetLength(1); iPhi++)
-                            {
-                                var phi = iPhi * (2 * Math.PI / (map.GetLength(1)-1));
-                                var x = Math.Sin(theta) * Math.Cos(phi);
-                                var y = Math.Sin(theta) * Math.Sin(phi);
-                                var z = Math.Cos(theta);
-                                map[iTheta, iPhi] = objfn.calculate(new[] { x, y, z });
-                            }
-                        }
-                                    );
-
-                        Duration.Stop();
-                        Console.WriteLine("RunTime = " + Duration.Elapsed);
-                        Timing.Add(Duration.Elapsed);
-                        using (var writer = new StreamWriter(DirData + "180x360" + (i + 1) + "objfn.CSV"))
-                        //using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
-                        {
-                            for (int iRow = 0; iRow < map.GetLength(0); iRow++)
-                                writer.WriteLine(string.Join(',', map.GetRow(iRow)));
+                            csv.WriteRecords(Timing);
                         }
                     }
+                    */
+                    #endregion
+                }
+                if(runMultiObj)
+                    LoopSwitch = false;
+                if (LoopSwitch)
+                {
+                    runMultiObj = true; runobj = false;
                 }
             }
-            if(runobj)
-            {
-
-
-                var n = Directory.GetFiles(@DirData, "*",
-                    SearchOption.AllDirectories).Length;
-                string f;
-                if (n == 0)
-                    f = "TestFile_001";
-                else
-                {
-                    n++; n++;
-                    if (n < 10)
-                        f = "TestFile_00" + n;
-                    else if (n < 100)
-                        f = "TestFile_0" + n;
-                    else
-                        f = "TestFile_" + n;
-                }
-                int index = -1;
-                for (int i = 0; i < Data.Count; i++)
-                {
-                    if (Data[i].Best == "1")
-                    {
-                        index++;
-                        TVGL.IO.Open(filename[index].FullName, out TessellatedSolid ts);
-                        double R = 0.0;
-                        foreach (var v in ts.Vertices)
-                        {
-                            double DistSq = Math.Abs(ts.Center.DistanceSquared(v.Coordinates));
-                            if (DistSq > R)
-                                R = DistSq;
-                        }
-                        double minHeight = (Math.Sqrt(R)) * 0.2;
-                        double thickness = minHeight * 0.1;
-                        PlotMixedSlices(ts, thickness, new Vector3(Data[i].X, Data[i].Y, Data[i].Z));
-                    }
-                }
-
-                using (var writer = new StreamWriter(DirData + f + ".CSV"))
-                using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
-                {
-                    csv.WriteRecords(Data);
-                }
-            }
-            else
-            {
-                using (var writer = new StreamWriter(DirData + "Timing2.CSV"))
-                using (var csv = new CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
-                {
-                    csv.WriteRecords(Timing);
-                }
-            }
-            
             Console.ReadKey();
         }
 

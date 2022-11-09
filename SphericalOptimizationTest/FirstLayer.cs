@@ -56,8 +56,8 @@ namespace SphericalOptimizationTest
             }
             else if(Case == 3)
             {
-                return FirstLayerScore(Loops.GetFirstLayer(tessellatedSolid, thickness, d), LargestArea,d);
-                //return FirstLayerScore(QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0], LargestArea,d);
+                //return FirstLayerScore(Loops.GetFirstLayer(tessellatedSolid, thickness, d), LargestArea,d);
+                return FirstLayerScore(QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0], LargestArea,d);
             }
             else
             {
@@ -97,8 +97,30 @@ namespace SphericalOptimizationTest
             // return 1E-3 *tessellatedSolid.SurfaceArea / FirstLayer.Sum(x => x.Area);
             // update max score 0 and min score is almost 1
             //if(d.X != 1 && d.Y != 1 && d.Z != 1)
-                //Presenter.ShowAndHang(FirstLayer);
-            return 1 - (FirstLayer.Select(x => x.Area).Sum() / maxArea);
+            //Presenter.ShowAndHang(FirstLayer);
+            var NormScore = FirstLayer.Select(x => x.Area).Sum();
+            var tempv = 0.0;
+            if (NormScore > maxArea)
+                return 0;
+            foreach (var ch in tessellatedSolid.ConvexHull.Faces)
+            {
+                if (d != ch.Normal && ch.Area >= maxArea * 0.01) 
+                    if (Math.Abs(ch.Normal.Normalize().Dot(d)) >= Math.Cos(Math.PI / 6))
+                    {
+                        //var currentValue = Loops.GetFirstLayer(tessellatedSolid, thickness, ch.Normal).Select(x => x.Area).Sum();
+                        var currentValue = QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, ch.Normal, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
+                        if (currentValue > tempv)
+                            tempv = currentValue;
+                    }
+            }
+
+                       
+            if (NormScore > tempv)
+                return 1 - NormScore / maxArea;
+
+            return 1 - 0.5 * (NormScore + tempv) / maxArea;
+
+            //return 1 - (FirstLayer.Select(x => x.Area).Sum() / maxArea);
             /// Possible future improvments:
             /// 1. measure the first layer score based on printing cases:
             ///     A. Desirable case: 
@@ -113,11 +135,12 @@ namespace SphericalOptimizationTest
         }
         private double StaircaseEffectScore(double dot)
         {
+            return 4 * (-Math.Pow(dot, 4) + Math.Pow(dot, 2));
             //return dot * (1 - dot);
             //double score = (Math.Exp(b * (Math.Abs(dot) - 1)) + Math.Exp(-b * Math.Abs(dot))) / denomProx;
-            double score = (Math.Exp(b * ((dot*dot) - 1)) + Math.Exp(-b * (dot* dot))) / denomProx;
+            //double score = (Math.Exp(b * ((dot*dot) - 1)) + Math.Exp(-b * (dot* dot))) / denomProx;
 
-            return 1 - score;
+            //return 1 - score;
         }
 
         private double SupportStructureScore(Vector3 d, List<Polygon> firstLayer, double currentBest = double.PositiveInfinity)
