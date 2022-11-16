@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using HelixToolkit.SharpDX.Core;
 using OptimizationToolbox;
 using TVGL;
+using Polygon = TVGL.Polygon;
 
 namespace SphericalOptimizationTest
 {
@@ -38,7 +40,7 @@ namespace SphericalOptimizationTest
 
             if (Case == 1)
             {
-                return SupportStructureScore135DegOverhang(d, Loops.GetFirstLayer(tessellatedSolid,thickness,d));
+                return SupportStructureScore135DegOverhang(d);
                 //return SupportStructureScore(d,GetFirstLayer(d));
                 //return SupportStructureScore(d, QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0]);
                 //return SupportStructureScore135DegOverhang(d, QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0]);
@@ -46,18 +48,20 @@ namespace SphericalOptimizationTest
             else if (Case == 2)
             {
                 var X2 = 0.0;
-                
+                var delta_worseCase = 0.0;
                 foreach (var face in tessellatedSolid.Faces)
                 {
                     var dot = d.Dot(face.Normal.Normalize());
                     X2 += face.Area * StaircaseEffectScore(dot);
+                    //X2 += StaircaseEffectScore(dot, d, face, ref delta_worseCase);
                 }
+                //return X2 / delta_worseCase;
                 return X2 / tessellatedSolid.Faces.Select(x => x.Area).Sum();
             }
             else if(Case == 3)
             {
-                //return FirstLayerScore(Loops.GetFirstLayer(tessellatedSolid, thickness, d), LargestArea,d);
-                return FirstLayerScore(QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0], LargestArea,d);
+                return FirstLayerScore(Loops.GetFirstLayer(tessellatedSolid, thickness, d), LargestArea, d);
+                //return FirstLayerScore(QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0], LargestArea,d);
             }
             else
             {
@@ -69,13 +73,16 @@ namespace SphericalOptimizationTest
                 //var firstLayer = QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, d, 1E-6, -1, thickness)[0];
                 var firstLayer = Loops.GetFirstLayer(tessellatedSolid, thickness, d);
                 //Presenter.ShowAndHang(test);
+                var delta_worseCase = 0.0;
                 foreach (var face in tessellatedSolid.Faces)
                 {
                     var dot = d.Dot(face.Normal);
                     x2 += face.Area * StaircaseEffectScore(dot);
+                    //x2 += StaircaseEffectScore(dot, d, face, ref delta_worseCase);
                 }
-                x2 /= tessellatedSolid.Faces.Select(x => x.Area).Sum();
-                var x1 = SupportStructureScore135DegOverhang(d, firstLayer);
+                x2 /= delta_worseCase;
+                //x2 /= tessellatedSolid.Faces.Select(x => x.Area).Sum();
+                var x1 = SupportStructureScore135DegOverhang(d);
 
                 var x3 = FirstLayerScore(firstLayer, LargestArea,d);
 
@@ -98,29 +105,48 @@ namespace SphericalOptimizationTest
             // update max score 0 and min score is almost 1
             //if(d.X != 1 && d.Y != 1 && d.Z != 1)
             //Presenter.ShowAndHang(FirstLayer);
+            if(FirstLayer == null)
+            {
+                FirstLayer = new List<Polygon>();
+            }
             var NormScore = FirstLayer.Select(x => x.Area).Sum();
-            var tempv = 0.0;
-            if (NormScore > maxArea)
+            var Area = 0.0;
+            foreach (var poly in FirstLayer)
+            {
+                Area += poly.AllPolygons.Select(x => x.Area).Sum();
+            }
+            if (Area >= maxArea)
                 return 0;
+            return 1 - Area / maxArea;
+            /*
+            var tempv = 0.0;
+            var cosang = Math.Cos(Math.PI / 18);
             foreach (var ch in tessellatedSolid.ConvexHull.Faces)
             {
-                if (d != ch.Normal && ch.Area >= maxArea * 0.01) 
-                    if (Math.Abs(ch.Normal.Normalize().Dot(d)) >= Math.Cos(Math.PI / 6))
+                if (d != ch.Normal)
+                    if (Math.Abs(ch.Normal.Normalize().Dot(d)) >= cosang)
                     {
-                        //var currentValue = Loops.GetFirstLayer(tessellatedSolid, thickness, ch.Normal).Select(x => x.Area).Sum();
-                        var currentValue = QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, ch.Normal, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
-                        if (currentValue > tempv)
-                            tempv = currentValue;
+                        var angle = Math.Acos(ch.Normal.Dot(d));
+                        if (angle != 0)
+                        {
+                            var currentlayer = Loops.GetFirstLayer(tessellatedSolid, thickness, ch.Normal);
+                            //Presenter.ShowAndHang(currentlayer);
+                            var currentValue = 0.0;
+                            foreach (var poly in currentlayer)
+                            {
+                                currentValue += poly.AllPolygons.Select(x => x.Area).Sum();
+                            }
+                            //var currentValue = (Math.PI/18 - angle) * QuadricSlicer.GetUniformlySpacedCrossSections(tessellatedSolid, ch.Normal, 1E-6, -1, thickness)[0].Select(x => x.Area).Sum();
+                            currentValue = currentValue * (1 - (Math.PI / 18) - angle);
+                            if (currentValue > tempv)
+                                tempv = currentValue;
+                        }
                     }
             }
 
-                       
-            if (NormScore > tempv)
-                return 1 - NormScore / maxArea;
 
-            return 1 - 0.5 * (NormScore + tempv) / maxArea;
-
-            //return 1 - (FirstLayer.Select(x => x.Area).Sum() / maxArea);
+            return 1 - (0.5 * (NormScore + tempv) / maxArea);
+            */
             /// Possible future improvments:
             /// 1. measure the first layer score based on printing cases:
             ///     A. Desirable case: 
@@ -135,7 +161,39 @@ namespace SphericalOptimizationTest
         }
         private double StaircaseEffectScore(double dot)
         {
+            /*
+            var direction = 0;
+            if (dot > 0)
+                direction = -1;
+            else if (dot < 0)
+                direction = 1;
+            else
+                direction = 0;
+
+            var b_values = new List<(double,Vector3)>();
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                    if (i != j)
+                    {
+                        var dist = MiscFunctions.DistancePointToPlane(face.Vertices[i].Coordinates, d,
+                            face.Vertices[j].Coordinates);
+                        if (dist > 0)
+                            b_values.Add((dist, face.Vertices[i].Coordinates));
+                    }
+            }
+            b_values = b_values.OrderByDescending(x=>x.Item1).ToList();
+
+            //var delta = b_dist[0].Item1 * dot;
+            var delta = 0.0;
+            if(dot ==0)
+                dot = 0;
+            //delta_worseCase += b_dist * 0.5 * Math.Sqrt(2);
+            if (delta < 0)
+                delta = 0;
+            //return delta;*/
             return 4 * (-Math.Pow(dot, 4) + Math.Pow(dot, 2));
+
             //return dot * (1 - dot);
             //double score = (Math.Exp(b * (Math.Abs(dot) - 1)) + Math.Exp(-b * Math.Abs(dot))) / denomProx;
             //double score = (Math.Exp(b * ((dot*dot) - 1)) + Math.Exp(-b * (dot* dot))) / denomProx;
@@ -229,133 +287,200 @@ namespace SphericalOptimizationTest
             return 1 - ((PrintableVolume -VolumetricError)* thickness / tessellatedSolid.Volume);
         }
 
-        private double SupportStructureScore135DegOverhang(Vector3 d, List<Polygon> firstLayer, double currentBest = double.PositiveInfinity)
+        private double SupportStructureScore135DegOverhang(Vector3 d)
         {
             var SolidOriginal = TVGL.Slice.GetUniformlySpacedCrossSections(
                 tessellatedSolid, d, double.NaN, -1, thickness).ToList();
-            SolidOriginal.Insert(0, firstLayer);
-            //SolidOriginal.Reverse();
+
+
             var AccessibleRegion = new List<Polygon>[SolidOriginal.Count];
             AccessibleRegion[0] = SolidOriginal[0];
-            var ListOverhangRegion = new List<Polygon>[SolidOriginal.Count].ToList();
+            
+            var TempOverhang = new Dictionary<int, List<Polygon>>();
 
+            int SwitchingLayer = 6; // Slice number where the overhang angle is 90 degrees
+            var tList = new double[SolidOriginal.Count];
             for (int i = 1; i < SolidOriginal.Count(); i++)
             {
-                if (SolidOriginal[i].Count == 0 || SolidOriginal[i - 1].Count == 0)
-                    continue;
-                else if (i <= 10)
+                if (SolidOriginal[i].Count == 0 || SolidOriginal[i - 1].Count == 0 || AccessibleRegion[i - 1].Count == 0) 
+                    break;
+                else
                 {
-                    var angle = (i - 1) * Math.PI / 20;
-                    var t = thickness * Math.Sin(angle) / Math.Sin(Math.PI / 2 - angle);
-                    AccessibleRegion[i] = SolidOriginal[i].IntersectPolygons(PolygonOperations.OffsetRound(AccessibleRegion[i - 1], t));
+                    TempOverhang.Add(i-1, new List<Polygon>());
+                    var t = thickness;
+                    if (i < SwitchingLayer)
+                    {
+                        var angle = i * Math.PI * 0.5 / SwitchingLayer;
+                        t *= Math.Tan(angle);
+                    }
+                    else if (i == SwitchingLayer)
+                    {
+                        t = double.NaN;
+                    }
+                    else if (i < (int)1.5 * SwitchingLayer)
+                    {
+                        var angle = Math.PI * (1 - (i * 0.5 / SwitchingLayer));
+                        t /= Math.Tan(angle);
+                    }
+                    tList[i - 1] = t;
 
-                }
-                else if (i > 10)
-                {
-                    var TempPoly = new List<Polygon>();
-                    var TempOverhang = new List<Polygon>();
-                    for (int j = 0; j < SolidOriginal[i].Count; j++)
+                    var tempLayer = new List<Polygon>();
+                    for (int j = 0; j < SolidOriginal[i].Count(); j++)
                     {
                         var Empty = true;
-                        for (int k = 0; k < SolidOriginal[i - 1].Count; k++)
+                        for (int k = 0; k < AccessibleRegion[i - 1].Count(); k++)
                         {
-                            if (!SolidOriginal[i][j].GetPolygonInteraction(SolidOriginal[i - 1][k]).IntersectionWillBeEmpty())
+                            if (!SolidOriginal[i][j].GetPolygonInteraction(AccessibleRegion[i - 1][k]).IntersectionWillBeEmpty())
                             {
-                                TempPoly.Add(SolidOriginal[i][j]);
                                 Empty = false;
+                                var poly = new List<Polygon>();
+                                if (i < SwitchingLayer)
+                                {
+
+                                    var OffsettedPoly = PolygonOperations.OffsetRound(AccessibleRegion[i - 1][k], t, 1e-7);
+                                    foreach (var p in OffsettedPoly) 
+                                    {
+                                        tempLayer = PolygonOperations.UnionPolygons(
+                                            PolygonOperations.Intersect(SolidOriginal[i][j], p),
+                                            tempLayer);
+                                        
+                                    }
+                                }
+                                else
+                                    tempLayer.Add(SolidOriginal[i][j]);
                                 break;
                             }
                         }
-                        if(Empty)
-                        {
-                            TempOverhang.Add(SolidOriginal[i][j]);
-                        }
+                        if (Empty)
+                            TempOverhang[i-1].Add(SolidOriginal[i][j]);
                     }
-                    ListOverhangRegion[i] = TempOverhang;
-                    AccessibleRegion[i] = TempPoly;
+                    AccessibleRegion[i] = tempLayer;
+                    {
+                        // Presenter.ShowAndHang(AccessibleRegion[i-1]);
+                        // Presenter.ShowAndHang(SolidOriginal[i]);
+                        // Presenter.ShowAndHang(AccessibleRegion[i]);
+
+                    }
                 }
+               
             }
-            var startid = -1; var endid = -1;
-            for (int i = 1; i < SolidOriginal.Count; i++)
-            {
-                if (ListOverhangRegion[i - 1] != null && ListOverhangRegion[i - 1].Count > 0) 
-                {
-                    if (ListOverhangRegion[i] != null && ListOverhangRegion[i].Count > 0) 
-                    {
-                        if (startid == -1)
-                            startid = i;
-
-                        var angle = (i - 1) * Math.PI / 20;
-                        var t = thickness * Math.Sin(angle) / Math.Sin(Math.PI / 2 - angle);
-                        ListOverhangRegion[i] = ListOverhangRegion[i].IntersectPolygons(PolygonOperations.OffsetRound(ListOverhangRegion[i - 1], t));
-
-                    }
-                    else
-                    {
-                        endid = i;
-                        var TempPoly = new List<Polygon>();
-                        for (int j = 0; j < AccessibleRegion[i].Count; j++)
-                        {
-                            for (int k = 0; k < ListOverhangRegion[i - 1].Count; k++)
-                            {
-                                if (!AccessibleRegion[i][j].GetPolygonInteraction(ListOverhangRegion[i - 1][k]).IntersectionWillBeEmpty())
-                                {
-                                    TempPoly.Add(ListOverhangRegion[i - 1][k]);
-                                    break;
-                                }
-                            }
-                            
-                        }
-                        if(TempPoly.Count > 0)
-                        {
-                            if (startid != -1 && endid != -1) 
-                                for (int j = startid; j < i; j++)
-                                {
-                                    AccessibleRegion[i].AddRange(ListOverhangRegion[j]);
-                                }
-                        }
-                    }
-                    
-                }
-                
-            }
-
-
-            /*
-            var showRegion = new List<List<Vector3>>();
-
-            for (int i = 0; i < AccessibleRegion.Count(); i++)
-            {
-                if (AccessibleRegion[i].Count > 0)
-                    foreach (var p in AccessibleRegion[i])
-                    {
-                        var V = new List<Vector3>();
-                        foreach (var v in p.Path)
-                            V.Add(new Vector3(v, i * thickness));
-                        showRegion.Add(V);
-                    }
-
-            }
+            #region WIP
             
-            var Showorigianl = new List<List<Vector3>>();
-            for (int i = 0; i < SolidOriginal.Count; i++)
+            var NewTempOverhang = TempOverhang.ToList(); 
+            NewTempOverhang.Reverse();
+            
+            var vect2 = new List<List<List<Vector3>>>();
+            for (int i = 0; i < SolidOriginal.Count(); i++)
             {
-                foreach (var p in SolidOriginal[i])
-                {
-                    var V = new List<Vector3>();
-                    foreach (var v in p.Path)
-                        V.Add(new Vector3(v, i * thickness));
-                    Showorigianl.Add(V);
-                }
+                var tempv1 = new List<List<Vector3>>();
+                if (AccessibleRegion[i] != null)
+                    foreach (var v1 in AccessibleRegion[i])
+                    {
+                        var tempv2 = new List<Vector3>();
+
+                        foreach (var v2 in v1.AllPolygons)
+                        {
+                            foreach (var v3 in v2.Path)
+                                tempv2.Add(new Vector3(v3, thickness * i));
+                        }
+                        tempv1.Add(tempv2);
+                    }
+                vect2.Add(tempv1);
             }
 
+
+            #region Collect overhang over 90 degrees
+            /*
+            foreach (var i in NewTempOverhang)
             {
-                Presenter.ShowVertexPaths(showRegion);
-                Presenter.ShowVertexPaths(Showorigianl);
+                if (i.Key < SolidOriginal.Count && i.Value.Count > 0 && i.Key > 5)  // i.key should not be the last layer 
+                {
 
-            }*/
-            var Volume = AccessibleRegion.Select(x => x.Select(p => p.Area).Sum()).Sum() * thickness;
 
+                    //Presenter.ShowAndHang(AccessibleRegion[i.Key]);
+                    //Presenter.ShowAndHang(AccessibleRegion[i.Key - 1]);
+                    //Presenter.ShowAndHang(i.Value);
+                    var connectedLayer = PolygonOperations.Subtract(AccessibleRegion[i.Key + 1], i.Value);
+                    foreach (var poly1 in connectedLayer)
+                    {
+                        foreach (var poly2 in AccessibleRegion[i.Key])
+
+                        {
+                            if (poly1.GetPolygonInteraction(poly2).IntersectionWillBeEmpty())
+                            {
+                                var offsetpoly = PolygonOperations.OffsetRound(poly1, tList[i.Key], 1e-7);
+                                var Polysubtract = PolygonOperations.Subtract(i.Value, offsetpoly);
+                                AccessibleRegion[i.Key] = PolygonOperations.UnionPolygons(Polysubtract,
+                                    AccessibleRegion[i.Key]);
+                                break;
+                            }
+                        }
+                    }
+
+                    //Presenter.ShowAndHang(AccessibleRegion[i.Key]);
+                }
+            }
+            */
+            #endregion
+            /*
+            
+            vect2 = new List<List<List<Vector3>>>();
+            for (int i = 0; i < SolidOriginal.Count(); i++) 
+            {
+                var tempv1 = new List<List<Vector3>>();
+
+                foreach (var v1 in AccessibleRegion[i])
+                {
+                    var tempv2 = new List<Vector3>();
+
+                    foreach (var v2 in v1.AllPolygons)
+                    {
+                        foreach (var v3 in v2.Path)
+                            tempv2.Add(new Vector3(v3, thickness * i));
+                    }
+                    tempv1.Add(tempv2);
+                }
+                vect2.Add(tempv1);
+            }
+
+            Presenter.ShowVertexPaths(vect2);
+            Presenter.ShowVertexPaths(vect);
+            */
+
+            #endregion
+
+
+            var vect = new List<List<List<Vector3>>>();
+            for (int v = 0; v < SolidOriginal.Count(); v++)
+            {
+                var tempv1 = new List<List<Vector3>>();
+                foreach (var v2 in SolidOriginal[v])
+                {
+                    var tempv2 = new List<Vector3>();
+                    foreach (var v3 in v2.AllPolygons)
+                    {
+                        foreach (var v4 in v3.Path)
+                            tempv2.Add(new Vector3(v4, thickness * v));
+                    }
+                    tempv1.Add(tempv2);
+                }
+                vect.Add(tempv1);
+            }
+            var Volume = 0.0;
+            for (int i = 0; i < SolidOriginal.Count; i++) 
+            {
+                if (AccessibleRegion[i] != null)
+                    foreach (var poly in AccessibleRegion[i])
+                    {
+                        Volume += poly.AllPolygons.Select(x => x.Area).Sum();
+                    }
+            }
+
+            
+            
+            Volume *= thickness;
+            //var volume2 = AccessibleRegion.Select(x => x.Select(p => p.Area).Sum()).Sum()*thickness;
+            
             return Math.Abs(1 - (Volume / tessellatedSolid.Volume));
         }
 
@@ -512,8 +637,56 @@ namespace SphericalOptimizationTest
 
     public class Loops
     {
-        public static List<Polygon> GetFirstLayer(TessellatedSolid ts, double thickness, Vector3 direction, double offset = 1E-6)
+        public static List<Polygon> GetFirstLayer(TessellatedSolid ts, double stepSize, Vector3 direction)
         {
+
+            direction = direction.Normalize();
+            var transform = direction.TransformToXYPlane(out _);
+            var plane = new Plane(0.0, direction);
+            //First, sort the vertices along the given axis. Duplicate distances are not important.
+            var sortedVertices = ts.Vertices.OrderBy(v => v.Dot(direction)).ToArray();
+            var firstDistance = sortedVertices[0].Dot(direction);
+            var lastDistance = sortedVertices[^1].Dot(direction);
+            var lengthAlongDir = lastDistance - firstDistance;
+            stepSize = Math.Abs(stepSize);
+
+            int numSlices = (int)(lengthAlongDir / stepSize);
+            var startDistanceAlongDirection = firstDistance + 0.5 * stepSize;
+
+            var result = new List<Polygon>();
+            var currentEdges = new HashSet<Edge>();
+            var nextDistance = sortedVertices.First().Dot(direction);
+            var vIndex = 0;
+            for (int step = 0; step < 1; step++)
+            {
+                var d = startDistanceAlongDirection + step * stepSize;
+                var thisVertex = sortedVertices[vIndex];
+                var needToOffset = false;
+                while (thisVertex.Dot(direction) <= d)
+                {
+                    if (d.IsPracticallySame(thisVertex.Dot(direction))) needToOffset = true;
+                    foreach (var edge in thisVertex.Edges)
+                    {
+                        if (currentEdges.Contains(edge)) currentEdges.Remove(edge);
+                        else currentEdges.Add(edge);
+                    }
+                    vIndex++;
+                    if (vIndex == sortedVertices.Length) break;
+                    thisVertex = sortedVertices[vIndex];
+                }
+                if (needToOffset)
+                    d += Math.Min(stepSize, sortedVertices[vIndex].Dot(direction) - d) / 10.0;
+                plane.DistanceToOrigin = d;
+                if (currentEdges.Any())
+                    result = GetLoops(currentEdges.ToDictionary(ce => ce, ce =>
+                       MiscFunctions.PointOnPlaneFromIntersectingLine(plane, ce.From.Coordinates, ce.To.Coordinates, out _)
+                           .ConvertTo2DCoordinates(transform)), plane.Normal, plane.DistanceToOrigin, out _);
+                else result = new List<Polygon>();
+            }
+            return result;
+
+
+            /*
             // The first layer stands on the printing bed on:
             // 1. vertices,
             // 2. edges,
@@ -565,6 +738,7 @@ namespace SphericalOptimizationTest
                 Loops.output("Error First Layer: Consider increasing value of offset ");
                 return null;
             }
+            */
         }
 
         public static List<Polygon> GetLoops(Dictionary<Edge, Vector2> edgeDictionary, Vector3 normal, double distanceToOrigin,
