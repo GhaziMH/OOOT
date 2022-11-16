@@ -48,7 +48,7 @@ namespace SphericalOptimization
                     }
                     if (RunNelderMead)
                     {
-                        RunOpt(ts, thickness, LargestArea, filename, i, counter, DirData, anglei);
+                        RunNelderMeadOpt(ts, thickness, LargestArea, filename, i, counter, DirData, anglei);
                     }
                     if (RunSingleObj) 
                     {
@@ -316,7 +316,7 @@ namespace SphericalOptimization
 
         }
 
-        private static void RunOpt(TessellatedSolid ts, double thickness, double LargestArea,List<FileInfo> filename, int i, int counter,
+        private static void RunNelderMeadOpt(TessellatedSolid ts, double thickness, double LargestArea,List<FileInfo> filename, int i, int counter,
             string DirData, double anglei)
         {
             var Data = new List<SaveData>();
