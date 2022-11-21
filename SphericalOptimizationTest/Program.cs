@@ -14,7 +14,7 @@ namespace SphericalOptimization
 {
     class Program
     {
-        static bool Run_CH = true;
+        static bool Run_CH = false;
         static bool RunNelderMead = false;
         static bool RunSingleObj = true;
         static bool showPlot = false;
@@ -23,25 +23,23 @@ namespace SphericalOptimization
 
         static void Main(string[] args)
         {
-            //Parameters.Verbosity = OptimizationToolbox.VerbosityLevels.Everything;
-            // this next line is to set the Debug statements from OOOT to the Console.
-            //Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
 
             var filename = FindParentDirectory("TestFiles").GetFiles("*").ToList();
             string DirData = Directory.GetParent(Directory.GetParent(filename[0].FullName).FullName).FullName + "\\Data\\";
 
             int counter = filename.Count;
             
-
             var Orientations = new List<double> { 0 };
 
             foreach (var anglei in Orientations)
             {
-                for (int i = 0; i < counter; i++)
+                for (int i = 1; i < counter; i++)
                 {
                     SetUpFile(filename, i, counter, out TessellatedSolid ts, out double thickness);
                     double LargestArea = 0.0;
-                    var CH_Normals = GetCHNormal(ts, thickness, ref LargestArea);
+                    thickness = 0.5;
+                    double MinAngle = 2.0; // in degree
+                    var CH_Normals = GetCHNormal(ts, thickness, MinAngle, ref LargestArea);
                     if (Run_CH)
                     {
                         Run_convexHull(ts, thickness, LargestArea, filename, i, counter, DirData, anglei, CH_Normals);
@@ -143,30 +141,24 @@ namespace SphericalOptimization
             thickness = minHeight * 0.1;
         }
 
-        private static HashSet<Vector3> GetCHNormal(TessellatedSolid ts, double thickness, ref double LargestArea)
+        private static HashSet<Vector3> GetCHNormal(TessellatedSolid ts, double thickness, double MinAngle, ref double LargestArea)
         {
             HashSet<Vector3> CH_Normals = new HashSet<Vector3>();
-            foreach (var f in ts.ConvexHull.Faces)
-                if (f.Area > thickness * thickness)
-                {
-                    bool Addv = true;
-                    foreach (var ch in CH_Normals.ToList())
-                        if (Math.Abs(ch.Dot(f.Normal) - 1) < 1E-1)
-                        {
-                            Addv = false;
-                            break;
-                        }
-                    if (Addv)
-                        CH_Normals.Add(f.Normal);
-                }
-
-
             CH_Normals.Add(Vector3.UnitX);
             CH_Normals.Add(Vector3.UnitY);
             CH_Normals.Add(Vector3.UnitZ);
             CH_Normals.Add(-1 * Vector3.UnitX);
             CH_Normals.Add(-1 * Vector3.UnitY);
             CH_Normals.Add(-1 * Vector3.UnitZ);
+            foreach (var f in ts.ConvexHull.Faces.OrderByDescending(x=>x.Area))
+                if (f.Area > thickness * thickness)
+                {
+                    if (CH_Normals.Select(x => x.Dot(f.Normal)).Max() < Math.Cos(MinAngle * Math.PI / 180)) 
+                        CH_Normals.Add(f.Normal);
+                }
+
+
+            
             foreach (var edge in ts.Edges)
             {
                 {/*
@@ -177,16 +169,8 @@ namespace SphericalOptimization
                                     0.5 * (normal1.Select(x => x.Y).Average() + normal2.Select(x => x.Y).Average()),
                                     0.5 * (normal1.Select(x => x.Z).Average() + normal2.Select(x => x.Z).Average()));
                                 */
-                    var n = 0.5 * (edge.OwnedFace.Normal + edge.OtherFace.Normal);
-                    n = n.Normalize();
-                    bool Addv = true;
-                    foreach (var v in CH_Normals.ToList())
-                        if (Math.Abs(v.Dot(n) - 1) < 1E-1)
-                        {
-                            Addv = false;
-                            break;
-                        }
-                    if (Addv)
+                    var n = edge.OwnedFace.Normal + edge.OtherFace.Normal.Normalize();
+                    if (CH_Normals.Select(x => x.Dot(n)).Max() < Math.Cos(MinAngle * Math.PI / 180)) 
                         CH_Normals.Add(n);
                 }
             }
@@ -220,7 +204,7 @@ namespace SphericalOptimization
             string DirData, double anglei, HashSet<Vector3> CH_Normals)
         {
             var ConvexHullList = CH_Normals.ToList();
-            for (int k = 1; k < 4; k++)
+            for (int k = 2; k < 4; k++)
             {
                 var DataCSV = new List<HeatmapData>();
                 var Duration = new Stopwatch();
@@ -240,9 +224,30 @@ namespace SphericalOptimization
 #endif
 
                 var best = DataCSV[0];
+                var Repeatedbest = new List<HeatmapData>();
                 foreach (var v in DataCSV)
+                {
                     if (v.fun < best.fun)
                         best = v;
+                    else if (Math.Abs(v.fun - best.fun) <= 1e-12 && v != DataCSV[0])
+                    {
+                        if (Repeatedbest.Count == 0)
+                            Repeatedbest.Add(v);
+                        else
+                        {
+                            foreach (var x in Repeatedbest)
+                            {
+                                if (Math.Abs(x.fun - best.fun) > 1e-12)
+                                {
+                                    Repeatedbest = new List<HeatmapData> { v };
+                                    break;
+                                }
+                            }
+                            Repeatedbest.Add(v);
+                        }
+                    }
+                }
+                    
 
                 Duration.Stop();
                 Console.WriteLine("Current file " + (i + 1) + " / " + counter);
@@ -252,6 +257,11 @@ namespace SphericalOptimization
                 Console.WriteLine("optimizing..., X" + k);
                 Console.WriteLine("NumEvals = " + CH_Normals.Count);
                 Console.WriteLine("X* = {" + best.X + "," + best.Y + "," + best.Z + "}");
+                if (Repeatedbest.Count > 0) 
+                {
+                    for (int j = 0; j < Repeatedbest.Count; j++)
+                        Console.WriteLine("X* (Direction with same f* value) = {" + Repeatedbest[j].X + "," + Repeatedbest[j].Y + "," + Repeatedbest[j].Z + "}");
+                }
                 Console.WriteLine("f* = {" + best.fun + "}");
                 Console.WriteLine("RunTime = " + Duration.Elapsed);
                 Console.WriteLine("#######################################################");
